@@ -1,0 +1,4 @@
+# Object files
+*.o
+
+ad9250-iio-daq

@@ -1,0 +1,7 @@
+config BR2_PACKAGE_AD9250_IIO_DAQ
+    bool "ad9250_iio_daq"
+    help
+        Data Acquisition on FMCJESDADC1 board.
+
+        https://github.com/bernardocarvalho/buildroot
+
