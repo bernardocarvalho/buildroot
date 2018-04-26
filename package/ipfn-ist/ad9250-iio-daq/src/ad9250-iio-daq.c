@@ -1,6 +1,6 @@
 /*
  * iio - AD9250 IIO streaming example
- *
+ * https://github.com/analogdevicesinc/libiio/blob/master/examples/ad9361-iiostream.c
  * Copyright (C) 2014 IABG mbH
  * Author: Michael Feilen <feilen_at_iabg.de>
  *
@@ -46,12 +46,14 @@ enum iodev { RX, TX };
 /* IIO structs required for streaming */
 static struct iio_context *ctx   = NULL;
 static struct iio_device  *dev   = NULL;
-static struct iio_channel *rx0_i = NULL;
-/*static struct iio_channel *rx0_q = NULL;*/
-/*static struct iio_channel *tx0_i = NULL;*/
-/*static struct iio_channel *tx0_q = NULL;*/
-static struct iio_buffer  *rxbuf = NULL;
+static struct iio_channel *rx0_a = NULL;
+static struct iio_channel *rx0_b = NULL;
+static struct iio_channel *rx1_a = NULL;
+static struct iio_channel *rx1_b = NULL;
+static struct iio_buffer  *rxbuf0_a = NULL;
+static struct iio_buffer  *rxbuf0_b = NULL;
 /*static struct iio_buffer  *txbuf = NULL;*/
+short * pAdcData = NULL;
 
 static bool stop;
 
@@ -59,14 +61,15 @@ static bool stop;
 static void shutdown()
 {
 	printf("* Destroying buffers\n");
-	if (rxbuf) { iio_buffer_destroy(rxbuf); }
+	if (rxbuf0_a) { iio_buffer_destroy(rxbuf0_a); }
+	if (rxbuf0_b) { iio_buffer_destroy(rxbuf0_b); }
 	/*if (txbuf) { iio_buffer_destroy(txbuf); }*/
-
+    if(pAdcData) free(pAdcData);
 	printf("* Disabling streaming channels\n");
-	if (rx0_i) { iio_channel_disable(rx0_i); }
-	/*if (rx0_q) { iio_channel_disable(rx0_q); }*/
-	/*if (tx0_i) { iio_channel_disable(tx0_i); }*/
-	/*if (tx0_q) { iio_channel_disable(tx0_q); }*/
+	if (rx0_a) { iio_channel_disable(rx0_a); }
+	if (rx0_b) { iio_channel_disable(rx0_b); }
+	if (rx1_a) { iio_channel_disable(rx1_a); }
+	if (rx1_b) { iio_channel_disable(rx1_b); }
 
 	printf("* Destroying context\n");
 	if (ctx) { iio_context_destroy(ctx); }
@@ -99,7 +102,6 @@ static void export_gpio(void ){
 int main (int argc, char **argv)
 {
 	// Streaming devices
-	//        struct iio_device *tx;
 	//        struct iio_device *rx;
 
 	// RX and TX sample counters
@@ -108,7 +110,11 @@ int main (int argc, char **argv)
 	//	ssize_t nbytes_rx;//, nbytes_tx;
 	char *p_dat, *p_end;
 	ptrdiff_t p_inc;
-	/*char fd_name[64];*/
+    int16_t * pval16;
+    int16_t trigLevel = 2000;
+    unsigned int n_samples, saveSize;
+
+    /*char fd_name[64];*/
 	FILE * fd_data;
 
 	export_gpio();
@@ -124,15 +130,29 @@ int main (int argc, char **argv)
 	dev =  iio_context_find_device(ctx, "axi-ad9250-hpc-0");
 	ASSERT(dev && "No axi-ad9250-hpc-0 device found");
 	/* finds AD9361 streaming IIO channels */
-	rx0_i = iio_device_find_channel(dev, "voltage0", 0); // RX
-	ASSERT(rx0_i && "No axi-ad9250-hpc-0 channel found");
-	iio_channel_enable(rx0_i);
-	rxbuf = iio_device_create_buffer(dev, 256*1024, false);
-	for (int i=0; i<1; i++){
-		iio_buffer_refill(rxbuf);
-		p_inc = iio_buffer_step(rxbuf);
-		p_end = iio_buffer_end(rxbuf);
-		p_dat = (char *)iio_buffer_first(rxbuf, rx0_i);
+	rx0_a = iio_device_find_channel(dev, "voltage0", 0); // RX
+	ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel found");
+	iio_channel_enable(rx0_a);
+    /*~0.5 ms buffers*/
+    saveSize = 256*1024;
+    rxbuf0_a = iio_device_create_buffer(dev, saveSize, false);
+    rxbuf0_b = iio_device_create_buffer(dev, 256*1024, false);
+    pAdcData = (int16_t *) malloc(2*saveSize);
+    do{
+		iio_buffer_refill(rxbuf0_a);
+		p_inc = iio_buffer_step(rxbuf0_a);
+		p_end = iio_buffer_end(rxbuf0_a);
+		p_dat = (char *)iio_buffer_first(rxbuf0_a, rx0_a);
+        pval16 = (int16_t *) (p_end - p_inc);
+    }
+    while(*pval16 < trigLevel);
+    n_samples = (p_dat-p_end )/ p_inc;
+    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, *pval16);
+    for (int i=0; i<1; i++){
+		iio_buffer_refill(rxbuf0_a);
+		p_inc = iio_buffer_step(rxbuf0_a);
+		p_end = iio_buffer_end(rxbuf0_a);
+		p_dat = (char *)iio_buffer_first(rxbuf0_a, rx0_a);
 		printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,(p_dat -p_end)/p_inc, iio_device_get_sample_size(dev));
 		fwrite(p_dat, 1, (p_end-p_dat), fd_data);
 	}
