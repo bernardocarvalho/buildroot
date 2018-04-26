@@ -2,6 +2,7 @@
 #
 ## AD9250_IIO_DAQ
 #
+#https://stackoverflow.com/questions/19783795/how-to-add-my-own-software-to-a-buildroot-linux-package
 #################################################################################
 
 AD9250_IIO_DAQ_VERSION = 1.0
