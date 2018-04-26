@@ -51,7 +51,7 @@ static struct iio_channel *rx0_b = NULL;
 static struct iio_channel *rx1_a = NULL;
 static struct iio_channel *rx1_b = NULL;
 static struct iio_buffer  *rxbuf0_a = NULL;
-static struct iio_buffer  *rxbuf0_b = NULL;
+//static struct iio_buffer  *rxbuf0_b = NULL;
 /*static struct iio_buffer  *txbuf = NULL;*/
 short * pAdcData = NULL;
 
@@ -62,7 +62,7 @@ static void shutdown()
 {
 	printf("* Destroying buffers\n");
 	if (rxbuf0_a) { iio_buffer_destroy(rxbuf0_a); }
-	if (rxbuf0_b) { iio_buffer_destroy(rxbuf0_b); }
+//	if (rxbuf0_b) { iio_buffer_destroy(rxbuf0_b); }
 	/*if (txbuf) { iio_buffer_destroy(txbuf); }*/
     if(pAdcData) free(pAdcData);
 	printf("* Disabling streaming channels\n");
@@ -94,7 +94,7 @@ static void export_gpio(void ){
         exit(1);
     }
 
-    write(exportfd, "240", 4);
+    write(exportfd, "458", 4);
     close(exportfd);
 }
 
@@ -108,8 +108,8 @@ int main (int argc, char **argv)
 	//size_t nrx = 0;
 	//	size_t ntx = 0;
 	//	ssize_t nbytes_rx;//, nbytes_tx;
-	char *p_dat, *p_end;
-	ptrdiff_t p_inc;
+	int16_t *p_dat_a, *p_end_a, *p_dat_b, *p_end_b;
+	ptrdiff_t p_inc_a;
     int16_t * pval16;
     int16_t trigLevel = 2000;
     unsigned int n_samples, saveSize;
@@ -133,28 +133,32 @@ int main (int argc, char **argv)
 	rx0_a = iio_device_find_channel(dev, "voltage0", 0); // RX
 	ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel found");
 	iio_channel_enable(rx0_a);
+	rx0_b = iio_device_find_channel(dev, "voltage1", 0); // RX
+	ASSERT(rx0_b && "No axi-ad9250-hpc-1 channel found");
+	iio_channel_enable(rx0_b);
     /*~0.5 ms buffers*/
     saveSize = 256*1024;
     rxbuf0_a = iio_device_create_buffer(dev, saveSize, false);
-    rxbuf0_b = iio_device_create_buffer(dev, 256*1024, false);
+//    rxbuf0_b = iio_device_create_buffer(dev, 256*1024, false);
     pAdcData = (int16_t *) malloc(2*saveSize);
     do{
 		iio_buffer_refill(rxbuf0_a);
-		p_inc = iio_buffer_step(rxbuf0_a);
-		p_end = iio_buffer_end(rxbuf0_a);
-		p_dat = (char *)iio_buffer_first(rxbuf0_a, rx0_a);
-        pval16 = (int16_t *) (p_end - p_inc);
+//		iio_buffer_refill(rxbuf0_b);
+		p_inc_a = iio_buffer_step(rxbuf0_a);
+		p_end_a = iio_buffer_end(rxbuf0_a);
+		p_dat_a = (int16_t *)iio_buffer_first(rxbuf0_a, rx0_a);
+        pval16 = (int16_t *) (p_end_a - p_inc_a);
     }
     while(*pval16 < trigLevel);
-    n_samples = (p_dat-p_end )/ p_inc;
-    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, *pval16);
+    n_samples = (p_end_a -p_dat_a)/ p_inc_a;
+    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc_a, p_end_a, n_samples, *pval16);
     for (int i=0; i<1; i++){
 		iio_buffer_refill(rxbuf0_a);
-		p_inc = iio_buffer_step(rxbuf0_a);
-		p_end = iio_buffer_end(rxbuf0_a);
-		p_dat = (char *)iio_buffer_first(rxbuf0_a, rx0_a);
-		printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,(p_dat -p_end)/p_inc, iio_device_get_sample_size(dev));
-		fwrite(p_dat, 1, (p_end-p_dat), fd_data);
+		p_inc_a = iio_buffer_step(rxbuf0_a);
+		p_end_a = iio_buffer_end(rxbuf0_a);
+		p_dat_a = (int16_t *)iio_buffer_first(rxbuf0_a, rx0_a);
+		printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc_a, p_end_a,(p_dat_a -p_end_a)/p_inc_a, iio_device_get_sample_size(dev));
+		fwrite(p_dat_a, 1, (p_end_a-p_dat_a), fd_data);
 	}
 
     shutdown();
