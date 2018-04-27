@@ -50,7 +50,7 @@ static struct iio_channel *rx0_a = NULL;
 static struct iio_channel *rx0_b = NULL;
 static struct iio_channel *rx1_a = NULL;
 static struct iio_channel *rx1_b = NULL;
-static struct iio_buffer  *rxbuf0_a = NULL;
+static struct iio_buffer  *rxbuf0 = NULL;
 //static struct iio_buffer  *rxbuf0_b = NULL;
 /*static struct iio_buffer  *txbuf = NULL;*/
 short * pAdcData = NULL;
@@ -61,7 +61,7 @@ static bool stop;
 static void shutdown()
 {
 	printf("* Destroying buffers\n");
-	if (rxbuf0_a) { iio_buffer_destroy(rxbuf0_a); }
+	if (rxbuf0) { iio_buffer_destroy(rxbuf0); }
 //	if (rxbuf0_b) { iio_buffer_destroy(rxbuf0_b); }
 	/*if (txbuf) { iio_buffer_destroy(txbuf); }*/
     if(pAdcData) free(pAdcData);
@@ -108,8 +108,8 @@ int main (int argc, char **argv)
 	//size_t nrx = 0;
 	//	size_t ntx = 0;
 	//	ssize_t nbytes_rx;//, nbytes_tx;
-	int16_t *p_dat_a, *p_end_a, *p_dat_b, *p_end_b;
-	ptrdiff_t p_inc_a;
+	char *p_dat_a, *p_end, *p_dat_b;
+	ptrdiff_t p_inc;
     int16_t * pval16;
     int16_t trigLevel = 2000;
     unsigned int n_samples, saveSize;
@@ -138,27 +138,29 @@ int main (int argc, char **argv)
 	iio_channel_enable(rx0_b);
     /*~0.5 ms buffers*/
     saveSize = 256*1024;
-    rxbuf0_a = iio_device_create_buffer(dev, saveSize, false);
+    rxbuf0 = iio_device_create_buffer(dev, saveSize, false);
 //    rxbuf0_b = iio_device_create_buffer(dev, 256*1024, false);
     pAdcData = (int16_t *) malloc(2*saveSize);
     do{
-		iio_buffer_refill(rxbuf0_a);
-//		iio_buffer_refill(rxbuf0_b);
-		p_inc_a = iio_buffer_step(rxbuf0_a);
-		p_end_a = iio_buffer_end(rxbuf0_a);
-		p_dat_a = (int16_t *)iio_buffer_first(rxbuf0_a, rx0_a);
-        pval16 = (int16_t *) (p_end_a - p_inc_a);
+		iio_buffer_refill(rxbuf0);
+		p_inc = iio_buffer_step(rxbuf0);
+		p_end = iio_buffer_end(rxbuf0);
+		p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
+		p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);
+        pval16 = (int16_t *) (p_end - p_inc); // Last value on a buff
     }
     while(*pval16 < trigLevel);
-    n_samples = (p_end_a -p_dat_a)/ p_inc_a;
-    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc_a, p_end_a, n_samples, *pval16);
+    //memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
+    n_samples = (p_end -p_dat_a)/ p_inc;
+    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, *pval16);
+    printf("p_dat, %p, %p, End %p, N:%d,  SS, %d\n", p_dat_a, p_dat_b, p_end, n_samples, *pval16);
     for (int i=0; i<1; i++){
-		iio_buffer_refill(rxbuf0_a);
-		p_inc_a = iio_buffer_step(rxbuf0_a);
-		p_end_a = iio_buffer_end(rxbuf0_a);
-		p_dat_a = (int16_t *)iio_buffer_first(rxbuf0_a, rx0_a);
-		printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc_a, p_end_a,(p_dat_a -p_end_a)/p_inc_a, iio_device_get_sample_size(dev));
-		fwrite(p_dat_a, 1, (p_end_a-p_dat_a), fd_data);
+		iio_buffer_refill(rxbuf0);
+		p_inc = iio_buffer_step(rxbuf0);
+		p_end = iio_buffer_end(rxbuf0);
+		p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
+		printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,(p_dat_a -p_end)/p_inc, iio_device_get_sample_size(dev));
+		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
 	}
 
     shutdown();
