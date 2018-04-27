@@ -161,7 +161,7 @@ int main (int argc, char **argv)
     //memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
     memcpy(pAdcData, p_dat_a, 4096);
     n_samples = (p_end -p_dat_a)/ p_inc;
-    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, *pval16);
+    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, saveSize);
     printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end, n_samples, *pval16);
     for (int i=0; i<1; i++){
 		iio_buffer_refill(rxbuf0);
