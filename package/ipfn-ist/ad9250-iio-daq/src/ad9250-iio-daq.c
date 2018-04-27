@@ -53,7 +53,6 @@ static struct iio_channel *rx1_b = NULL;
 static struct iio_buffer  *rxbuf0 = NULL;
 //static struct iio_buffer  *rxbuf0_b = NULL;
 /*static struct iio_buffer  *txbuf = NULL;*/
-short * pAdcData = NULL;
 
 static bool stop;
 
@@ -64,7 +63,6 @@ static void shutdown()
 	if (rxbuf0) { iio_buffer_destroy(rxbuf0); }
 //	if (rxbuf0_b) { iio_buffer_destroy(rxbuf0_b); }
 	/*if (txbuf) { iio_buffer_destroy(txbuf); }*/
-    if(pAdcData) free(pAdcData);
 	printf("* Disabling streaming channels\n");
 	if (rx0_a) { iio_channel_disable(rx0_a); }
 	if (rx0_b) { iio_channel_disable(rx0_b); }
@@ -109,11 +107,12 @@ int main (int argc, char **argv)
 	//	size_t ntx = 0;
 	//	ssize_t nbytes_rx;//, nbytes_tx;
 	char *p_dat_a, *p_end, *p_dat_b;
+    char * pAdcData = NULL;
 	ptrdiff_t p_inc;
     int16_t * pval16;
     int16_t trigLevel = 2000;
     unsigned int n_samples, saveSize;
-    unsigned int savSamples =128*4096;
+    unsigned int savBlock =128*4096;
 
     /*char fd_name[64];*/
 	FILE * fd_data;
@@ -145,7 +144,7 @@ int main (int argc, char **argv)
         shutdown();
 
     }
-    pAdcData = (int16_t *) malloc(4*saveSize);
+    pAdcData = (char *) malloc(4*saveSize);
     if (!pAdcData) {
         perror("Could not create pAdcData buffer");
         shutdown();
@@ -161,7 +160,10 @@ int main (int argc, char **argv)
     while(*pval16 < trigLevel);
     //memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
     //memcpy(pAdcData, p_dat_a, saveSize);
-    memcpy(pAdcData, p_dat_a, savSamples);
+    for (int i=0; i<2; i++){
+        //memcpy(pAdcData, p_dat_a, savSamples);
+        memcpy(pAdcData + i*savBlock, p_dat_a + i*savBlock, savBlock);
+    }
     n_samples = (p_end -p_dat_a)/ p_inc;
     printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, saveSize);
     printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end, n_samples, *pval16);
@@ -173,9 +175,10 @@ int main (int argc, char **argv)
 //		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
 	}
 	printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,(p_dat_a -p_end)/p_inc, iio_device_get_sample_size(dev));
-	fwrite(pAdcData, 1, savSamples, fd_data);
+	fwrite(pAdcData, 2, savBlock, fd_data);
 
     shutdown();
+    if(pAdcData) free(pAdcData);
     fclose(fd_data);
 	printf("Program Ended\n");
 
