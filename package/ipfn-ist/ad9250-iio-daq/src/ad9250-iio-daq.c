@@ -113,7 +113,7 @@ int main (int argc, char **argv)
     int16_t * pval16;
     int16_t trigLevel = 2000;
     unsigned int n_samples, saveSize;
-    unsigned int savSamples = 32*4096;
+    unsigned int savSamples =128*4096;
 
     /*char fd_name[64];*/
 	FILE * fd_data;
