@@ -32,6 +32,7 @@
 #define MHZ(x) ((long long)(x*1000000.0 + .5))
 /*#define GHZ(x) ((long long)(x*1000000000.0 + .5))*/
 
+#define N_CHAN 2
 #define ASSERT(expr) { \
 	if (!(expr)) { \
 		(void) fprintf(stderr, "assertion failed (%s:%d)\n", __FILE__, __LINE__); \
@@ -61,7 +62,6 @@ static void shutdown()
 {
 	printf("* Destroying buffers\n");
 	if (rxbuf0) { iio_buffer_destroy(rxbuf0); }
-//	if (rxbuf0_b) { iio_buffer_destroy(rxbuf0_b); }
 	/*if (txbuf) { iio_buffer_destroy(txbuf); }*/
 	printf("* Disabling streaming channels\n");
 	if (rx0_a) { iio_channel_disable(rx0_a); }
@@ -111,8 +111,8 @@ int main (int argc, char **argv)
 	ptrdiff_t p_inc;
     int16_t * pval16;
     int16_t trigLevel = 2000;
-    unsigned int n_samples, saveSize;
-    unsigned int savBlock =128*4096;
+    unsigned int n_samples, bufSamples, savBytes;
+    unsigned int savBlock;// =128*4096;
 
     /*char fd_name[64];*/
 	FILE * fd_data;
@@ -133,18 +133,19 @@ int main (int argc, char **argv)
 	rx0_a = iio_device_find_channel(dev, "voltage0", 0); // RX
 	ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel found");
 	iio_channel_enable(rx0_a);
-	rx0_b = iio_device_find_channel(dev, "voltage1", 0); // RX
+	rx0_b = iio_device_find_channel(dev, "voltage1", 0);
 	ASSERT(rx0_b && "No axi-ad9250-hpc-1 channel found");
 	iio_channel_enable(rx0_b);
-    /*~0.5 ms buffers*/
-    saveSize = 256*1024;
-    rxbuf0 = iio_device_create_buffer(dev, saveSize, false);
+    /*~1 ms buffers*/
+    bufSamples = 256*1024;
+    savBlock=N_CHAN *bufSamples; // 524288
+    rxbuf0 = iio_device_create_buffer(dev, bufSamples, false);
     if (!rxbuf0) {
         perror("Could not create RX buffer");
         shutdown();
-
     }
-    pAdcData = (char *) malloc(4*saveSize);
+    savBytes=2*N_CHAN*sizeof(int16_t)* bufSamples;
+    pAdcData = (char *) malloc(savBytes);
     if (!pAdcData) {
         perror("Could not create pAdcData buffer");
         shutdown();
@@ -161,21 +162,23 @@ int main (int argc, char **argv)
     //memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
     //memcpy(pAdcData, p_dat_a, saveSize);
     for (int i=0; i<2; i++){
-        //memcpy(pAdcData, p_dat_a, savSamples);
         memcpy(pAdcData + i*savBlock, p_dat_a + i*savBlock, savBlock);
     }
     n_samples = (p_end -p_dat_a)/ p_inc;
-    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, saveSize);
+    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, bufSamples);
     printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end, n_samples, *pval16);
     for (int i=0; i<1; i++){
 		iio_buffer_refill(rxbuf0);
 		p_inc = iio_buffer_step(rxbuf0);
 		p_end = iio_buffer_end(rxbuf0);
 		p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
+        for (int j=0; j<2; j++){
+            memcpy(pAdcData + (j+2)*savBlock, p_dat_a + j*savBlock, savBlock);
+        }
 //		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
 	}
 	printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,(p_dat_a -p_end)/p_inc, iio_device_get_sample_size(dev));
-	fwrite(pAdcData, 2, savBlock, fd_data);
+	fwrite(pAdcData, 4, savBlock, fd_data); // Cannot be after shutdown() ???
 
     shutdown();
     if(pAdcData) free(pAdcData);
