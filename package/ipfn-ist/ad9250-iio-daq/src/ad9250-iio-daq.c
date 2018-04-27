@@ -139,8 +139,16 @@ int main (int argc, char **argv)
     /*~0.5 ms buffers*/
     saveSize = 256*1024;
     rxbuf0 = iio_device_create_buffer(dev, saveSize, false);
-//    rxbuf0_b = iio_device_create_buffer(dev, 256*1024, false);
+    if (!rxbuf0) {
+        perror("Could not create RX buffer");
+        shutdown();
+
+    }
     pAdcData = (int16_t *) malloc(2*saveSize);
+    if (!pAdcData) {
+        perror("Could not create pAdcData buffer");
+        shutdown();
+    }
     do{
 		iio_buffer_refill(rxbuf0);
 		p_inc = iio_buffer_step(rxbuf0);
@@ -150,6 +158,8 @@ int main (int argc, char **argv)
         pval16 = (int16_t *) (p_end - p_inc);
     }
     while(*pval16 < trigLevel);
+    //memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
+    memcpy(pAdcData, p_dat_a, 4096);
     n_samples = (p_end -p_dat_a)/ p_inc;
     printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, *pval16);
     printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end, n_samples, *pval16);
