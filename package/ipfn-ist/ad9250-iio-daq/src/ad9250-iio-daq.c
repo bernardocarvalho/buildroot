@@ -113,6 +113,7 @@ int main (int argc, char **argv)
     int16_t * pval16;
     int16_t trigLevel = 2000;
     unsigned int n_samples, saveSize;
+    unsigned int savSamples = 32*4096;
 
     /*char fd_name[64];*/
 	FILE * fd_data;
@@ -144,7 +145,7 @@ int main (int argc, char **argv)
         shutdown();
 
     }
-    pAdcData = (int16_t *) malloc(2*saveSize);
+    pAdcData = (int16_t *) malloc(4*saveSize);
     if (!pAdcData) {
         perror("Could not create pAdcData buffer");
         shutdown();
@@ -159,7 +160,8 @@ int main (int argc, char **argv)
     }
     while(*pval16 < trigLevel);
     //memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
-    memcpy(pAdcData, p_dat_a, 4096);
+    //memcpy(pAdcData, p_dat_a, saveSize);
+    memcpy(pAdcData, p_dat_a, savSamples);
     n_samples = (p_end -p_dat_a)/ p_inc;
     printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, saveSize);
     printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end, n_samples, *pval16);
@@ -171,6 +173,7 @@ int main (int argc, char **argv)
 //		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
 	}
 	printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,(p_dat_a -p_end)/p_inc, iio_device_get_sample_size(dev));
+	fwrite(pAdcData, 1, savSamples, fd_data);
 
     shutdown();
     fclose(fd_data);
