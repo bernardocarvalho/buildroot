@@ -1,0 +1,9 @@
+ echo 458 > /sys/class/gpio/export
+ cat /sys/class/gpio/gpio458/direction
+ in
+ echo out > /sys/class/gpio/gpio
+ gpio448/      gpio458/      gpiochip448/
+ echo out > /sys/class/gpio/gpio458/direction
+ echo 1 > /sys/class/gpio/gpio458/value
+ echo 0 > /sys/class/gpio/gpio458/value
+

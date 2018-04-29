@@ -1,0 +1,3 @@
+mkdir /mnt/share
+mount  -o port=2049,nolock,proto=tcp 10.136.241.211:/opt/share /mnt/share
+

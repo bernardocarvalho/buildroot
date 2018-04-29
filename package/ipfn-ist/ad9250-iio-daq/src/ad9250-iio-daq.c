@@ -110,7 +110,7 @@ int main (int argc, char **argv)
     char * pAdcData = NULL;
 	ptrdiff_t p_inc;
     int16_t * pval16;
-    int16_t trigLevel = 2000;
+    int16_t trigLevel = -2000;
     unsigned int n_samples, bufSamples, savBytes;
     unsigned int savBlock;// =128*4096;
 
@@ -160,14 +160,13 @@ int main (int argc, char **argv)
     }
     while(*pval16 < trigLevel);
     //memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
-    //memcpy(pAdcData, p_dat_a, saveSize);
     for (int i=0; i<2; i++){
         memcpy(pAdcData + i*savBlock, p_dat_a + i*savBlock, savBlock);
     }
     n_samples = (p_end -p_dat_a)/ p_inc;
     printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, bufSamples);
     printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end, n_samples, *pval16);
-    for (int i=0; i<1; i++){
+    for (int i=0; i<64; i++){
 		iio_buffer_refill(rxbuf0);
 		p_inc = iio_buffer_step(rxbuf0);
 		p_end = iio_buffer_end(rxbuf0);
