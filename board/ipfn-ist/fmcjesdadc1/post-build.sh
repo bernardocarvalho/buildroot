@@ -14,3 +14,4 @@ grep -q "^10.136.241.211" $TARGETDIR/etc/fstab || \
 # Copy the rootfs additions
 #cp -a $BOARDDIR/rootfs-additions/* $TARGETDIR/
 cp -a $B_DIR/rootfs-additions/* $TARGETDIR/
+touch $TARGETDIR/var/log/lastlog
