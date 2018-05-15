@@ -10,6 +10,7 @@ TARGET := ad9250-iio-daq
 
 CFLAGS += -Wall
 LDFLAGS += -liio
+LDFLAGS += -lgpiod
 
 .PHONY: all clean
 

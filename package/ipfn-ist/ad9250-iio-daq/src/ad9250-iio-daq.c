@@ -27,12 +27,19 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <iio.h>
+// Needed to cp ./build/libgpiod-v0.3/include/gpiod.h staging/usr/include/
+//
+#include <gpiod.h>
 
 /* helper macros */
 #define MHZ(x) ((long long)(x*1000000.0 + .5))
 /*#define GHZ(x) ((long long)(x*1000000000.0 + .5))*/
 
+#define NUM_O_LINES 4 //14
 #define N_CHAN 2
+#define GPIO_CHIP_NAME "/dev/gpiochip0"
+#define GPIO_CONSUMER "gpiod-consumer"
+
 #define ASSERT(expr) { \
 	if (!(expr)) { \
 		(void) fprintf(stderr, "assertion failed (%s:%d)\n", __FILE__, __LINE__); \
@@ -79,22 +86,23 @@ static void handle_sig(int sig)
 	printf("Waiting for process to finish...\n");
 	stop = true;
 }
+
 //http://www.wiki.xilinx.com/GPIO+User+Space+App
-static void export_gpio(void ){
-    int exportfd;
+/*static void export_gpio(void ){*/
+    /*int exportfd;*/
 
-    printf("GPIO test running...\n");
-    // The GPIO has to be exported to be able to see it
-    // in sysfs
-    exportfd = open("/sys/class/gpio/export", O_WRONLY);
-    if (exportfd < 0)  {
-        printf("Cannot open GPIO to export it\n");
-        exit(1);
-    }
+    /*printf("GPIO test running...\n");*/
+    /*// The GPIO has to be exported to be able to see it*/
+    /*// in sysfs*/
+    /*exportfd = open("/sys/class/gpio/export", O_WRONLY);*/
+    /*if (exportfd < 0)  {*/
+        /*printf("Cannot open GPIO to export it\n");*/
+        /*exit(1);*/
+    /*}*/
 
-    write(exportfd, "458", 4);
-    close(exportfd);
-}
+    /*write(exportfd, "458", 4);*/
+    /*close(exportfd);*/
+/*}*/
 
 /* simple configuration and streaming */
 int main (int argc, char **argv)
@@ -116,8 +124,49 @@ int main (int argc, char **argv)
 
     /*char fd_name[64];*/
 	FILE * fd_data;
+//Need to cp target/usr/lib/libgpio* staging/usr/lib
+    int rv, value;
+    struct gpiod_chip *chip;
+    struct gpiod_line *line;
+    struct gpiod_line_bulk bulk;
+    unsigned int gpio_offsets[NUM_O_LINES];
+    int gpio_values[NUM_O_LINES];
+    unsigned int leds_value = 0x00A5;
+    chip = gpiod_chip_open("/dev/gpiochip0");
+    if (!chip){
+        printf("Error gpiod_chip_open\n");
+        return -1;
+    }
+    //TEST_ASSERT_NOT_NULL(chip);
+    line = gpiod_chip_get_line(chip, 11);
+    if (!line) {
+        gpiod_chip_close(chip);
+        return -1;
+    }
+    rv = gpiod_line_request_input(line, "foobari", false); // active_low)
+    if (rv) {
+        gpiod_chip_close(chip);
+        return -1;
 
-	export_gpio();
+    }
+    value = gpiod_line_get_value(line);
+//    rv = gpiod_ctxless_get_value_multiple(GPIO_CHIP, gpio_offsets,
+  //                                gpio_values, 8, false, TEST_CONSUMER);
+    gpiod_chip_close(chip);
+
+    for(int i=0; i < NUM_O_LINES; i++){
+        gpio_offsets[i] = 12 + i; //LEDs 0-7
+        gpio_values[i]= ((leds_value >> i) & 0x1);
+    }
+    rv = gpiod_simple_set_value_multiple(GPIO_CONSUMER, GPIO_CHIP_NAME,
+                                gpio_offsets, gpio_values, NUM_O_LINES, false, NULL, NULL);
+    if (rv) {
+        printf("Error gpiod_chip_multiple %d\n", rv);
+        //gpiod_chip_close(chip);
+        return -1;
+
+    }
+//	export_gpio();
 	/*sprintf(fd_name,"intData.bin");*/
 	fd_data =  fopen("intData.bin","wb");
 
