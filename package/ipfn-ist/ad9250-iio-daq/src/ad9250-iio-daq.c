@@ -35,7 +35,8 @@
 #define MHZ(x) ((long long)(x*1000000.0 + .5))
 /*#define GHZ(x) ((long long)(x*1000000000.0 + .5))*/
 
-#define NUM_O_LINES 4 //14
+#define GPIO_NUM_O_LINES 14
+#define GPIO_LINE_OFFSET 18
 #define N_CHAN 2
 #define GPIO_CHIP_NAME "/dev/gpiochip0"
 #define GPIO_CONSUMER "gpiod-consumer"
@@ -129,9 +130,9 @@ int main (int argc, char **argv)
     struct gpiod_chip *chip;
     struct gpiod_line *line;
     struct gpiod_line_bulk bulk;
-    unsigned int gpio_offsets[NUM_O_LINES];
-    int gpio_values[NUM_O_LINES];
-    unsigned int leds_value = 0x00A5;
+    unsigned int gpio_offsets[GPIO_NUM_O_LINES];
+    int gpio_values[GPIO_NUM_O_LINES];
+    unsigned int trigger_value = 0x0020;
     chip = gpiod_chip_open("/dev/gpiochip0");
     if (!chip){
         printf("Error gpiod_chip_open\n");
@@ -154,12 +155,12 @@ int main (int argc, char **argv)
   //                                gpio_values, 8, false, TEST_CONSUMER);
     gpiod_chip_close(chip);
 
-    for(int i=0; i < NUM_O_LINES; i++){
-        gpio_offsets[i] = 12 + i; //LEDs 0-7
-        gpio_values[i]= ((leds_value >> i) & 0x1);
+    for(int i=0; i < GPIO_NUM_O_LINES; i++){
+        gpio_offsets[i] = GPIO_LINE_OFFSET + i; //Lines 18-31
+        gpio_values[i]= ((trigger_value >> i) & 0x1);
     }
     rv = gpiod_simple_set_value_multiple(GPIO_CONSUMER, GPIO_CHIP_NAME,
-                                gpio_offsets, gpio_values, NUM_O_LINES, false, NULL, NULL);
+                                gpio_offsets, gpio_values, GPIO_NUM_O_LINES, false, NULL, NULL);
     if (rv) {
         printf("Error gpiod_chip_multiple %d\n", rv);
         //gpiod_chip_close(chip);
