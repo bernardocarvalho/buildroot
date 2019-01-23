@@ -28,7 +28,10 @@
 #include <unistd.h>
 #include <iio.h>
 // Needed to cp ./build/libgpiod-v0.3/include/gpiod.h staging/usr/include/
-//
+/* Using libgpiod v0.3 
+https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git/tree/include/gpiod.h?h=v0.3.x
+
+*/
 #include <gpiod.h>
 
 /* helper macros */
@@ -42,15 +45,14 @@
 #define GPIO_CONSUMER "gpiod-consumer"
 
 #define ASSERT(expr) { \
-	if (!(expr)) { \
-		(void) fprintf(stderr, "assertion failed (%s:%d)\n", __FILE__, __LINE__); \
-		(void) abort(); \
-	} \
+    if (!(expr)) { \
+        (void) fprintf(stderr, "assertion failed (%s:%d)\n", __FILE__, __LINE__); \
+        (void) abort(); \
+    } \
 }
 
 /* RX is input, TX is output */
 enum iodev { RX, TX };
-
 
 /* IIO structs required for streaming */
 static struct iio_context *ctx   = NULL;
@@ -68,70 +70,115 @@ static bool stop;
 /* cleanup and exit */
 static void shutdown()
 {
-	printf("* Destroying buffers\n");
-	if (rxbuf0) { iio_buffer_destroy(rxbuf0); }
-	/*if (txbuf) { iio_buffer_destroy(txbuf); }*/
-	printf("* Disabling streaming channels\n");
-	if (rx0_a) { iio_channel_disable(rx0_a); }
-	if (rx0_b) { iio_channel_disable(rx0_b); }
-	if (rx1_a) { iio_channel_disable(rx1_a); }
-	if (rx1_b) { iio_channel_disable(rx1_b); }
+    printf("* Destroying buffers\n");
+    if (rxbuf0) { iio_buffer_destroy(rxbuf0); }
+    /*if (txbuf) { iio_buffer_destroy(txbuf); }*/
+    printf("* Disabling streaming channels\n");
+    if (rx0_a) { iio_channel_disable(rx0_a); }
+    if (rx0_b) { iio_channel_disable(rx0_b); }
+    if (rx1_a) { iio_channel_disable(rx1_a); }
+    if (rx1_b) { iio_channel_disable(rx1_b); }
 
-	printf("* Destroying context\n");
-	if (ctx) { iio_context_destroy(ctx); }
-	exit(0);
+    printf("* Destroying context\n");
+    if (ctx) { iio_context_destroy(ctx); }
+    exit(0);
 }
 
 static void handle_sig(int sig)
 {
-	printf("Waiting for process to finish...\n");
-	stop = true;
+    printf("Waiting for process to finish...\n");
+    stop = true;
 }
 
 //http://www.wiki.xilinx.com/GPIO+User+Space+App
 /*static void export_gpio(void ){*/
-    /*int exportfd;*/
+/*int exportfd;*/
 
-    /*printf("GPIO test running...\n");*/
-    /*// The GPIO has to be exported to be able to see it*/
-    /*// in sysfs*/
-    /*exportfd = open("/sys/class/gpio/export", O_WRONLY);*/
-    /*if (exportfd < 0)  {*/
-        /*printf("Cannot open GPIO to export it\n");*/
-        /*exit(1);*/
-    /*}*/
-
-    /*write(exportfd, "458", 4);*/
-    /*close(exportfd);*/
+/*printf("GPIO test running...\n");*/
+/*// The GPIO has to be exported to be able to see it*/
+/*// in sysfs*/
+/*exportfd = open("/sys/class/gpio/export", O_WRONLY);*/
+/*if (exportfd < 0)  {*/
+/*printf("Cannot open GPIO to export it\n");*/
+/*exit(1);*/
 /*}*/
 
+/*write(exportfd, "458", 4);*/
+/*close(exportfd);*/
+/*}*/
+int gpio_set_val_multiple(const unsigned int *offsets,
+        const int *values, unsigned int num_lines){
+    int rv;
+    rv = gpiod_simple_set_value_multiple(GPIO_CONSUMER, GPIO_CHIP_NAME,
+            offsets, values, num_lines, false, NULL, NULL);
+    if (rv) {
+        //        printf("Error gpiod_chip_multiple %d\n", rv);
+        //gpiod_chip_close(chip);
+        return -1;
+
+    }
+    return rv;
+}
+int gpiod_line_set_val(struct gpiod_chip *chip,  unsigned int offset, 
+        int value){
+    int rv;
+    struct gpiod_line *line;
+
+    line = gpiod_chip_get_line(chip, offset);
+    if (!line) {
+        //        gpiod_chip_close(chip);
+        return -1;
+    }
+    rv = gpiod_line_set_value(line, value);
+    if (rv) {
+        return -1;
+    }
+    //    value = gpiod_line_get_value(line);
+    return rv;
+}
+int gpiod_line_output(struct gpiod_chip *chip,  unsigned int offset ){
+    int rv;
+    struct gpiod_line *line;
+
+    line = gpiod_chip_get_line(chip, offset);
+    if (!line) {
+        //        gpiod_chip_close(chip);
+        return -1;
+    }
+    rv = gpiod_line_request_output(line, "foobaro", false, 0); // active_low)
+    if (rv) {
+        //      gpiod_chip_close(chip);
+        return -1;
+
+    }
+    return 0;
+}
 /* simple configuration and streaming */
 int main (int argc, char **argv)
 {
-	// Streaming devices
-	//        struct iio_device *rx;
+    // Streaming devices
+    //        struct iio_device *rx;
 
-	// RX and TX sample counters
-	//size_t nrx = 0;
-	//	size_t ntx = 0;
-	//	ssize_t nbytes_rx;//, nbytes_tx;
-	char *p_dat_a, *p_end, *p_dat_b;
+    // RX and TX sample counters
+    //size_t nrx = 0;
+    //	size_t ntx = 0;
+    //	ssize_t nbytes_rx;//, nbytes_tx;
+    char *p_dat_a, *p_end, *p_dat_b;
     char * pAdcData = NULL;
-	ptrdiff_t p_inc;
+    ptrdiff_t p_inc;
     int16_t * pval16;
-    int16_t trigLevel = -2000;
+    int16_t trigLevel = 100;//2000;
     unsigned int n_samples, bufSamples, savBytes;
     unsigned int savBlock;// =128*4096;
 
     /*char fd_name[64];*/
-	FILE * fd_data;
-//Need to cp target/usr/lib/libgpio* staging/usr/lib
-    int rv, value;
+    FILE * fd_data;
+    //Need to cp target/usr/lib/libgpio* staging/usr/lib
+    int rv;
     struct gpiod_chip *chip;
-    struct gpiod_line *line;
-    struct gpiod_line_bulk bulk;
-    unsigned int gpio_offsets[GPIO_NUM_O_LINES];
-    int gpio_values[GPIO_NUM_O_LINES];
+    //struct gpiod_line_bulk bulk;
+    unsigned int gpio_offsets[40];
+    int gpio_values[40];
     unsigned int trigger_value = 0x0020;
     chip = gpiod_chip_open("/dev/gpiochip0");
     if (!chip){
@@ -139,53 +186,77 @@ int main (int argc, char **argv)
         return -1;
     }
     //TEST_ASSERT_NOT_NULL(chip);
-    line = gpiod_chip_get_line(chip, 11);
-    if (!line) {
-        gpiod_chip_close(chip);
-        return -1;
+    //    rv = gpiod_ctxless_get_value_multiple(GPIO_CHIP, gpio_offsets,
+    //                                gpio_values, 8, false, TEST_CONSUMER);
+    //gpiod_chip_close(chip);
+    gpiod_line_output(chip, 9);
+    gpiod_line_set_val(chip, 9, 0);
+    gpiod_line_output(chip, 10);
+    gpiod_line_output(chip, 11);
+/*
+    gpio_offsets[0] = i; //Lines 18-31
+        gpio_values[i]= ((trigger_value >> i) & 0x1);
+    for(int i=0; i < 2; i++){
+        gpio_offsets[i] = 10 + i; //Lines 10-11 address lines
+        gpio_values[i]= 0;
     }
-    rv = gpiod_line_request_input(line, "foobari", false); // active_low)
+    rv=gpio_set_val_multiple(gpio_offsets, gpio_values, 2);
     if (rv) {
-        gpiod_chip_close(chip);
+        printf("Error gpiod_chip_multiple %d\n", rv);
+        //gpiod_chip_close(chip);
         return -1;
-
     }
-    value = gpiod_line_get_value(line);
-//    rv = gpiod_ctxless_get_value_multiple(GPIO_CHIP, gpio_offsets,
-  //                                gpio_values, 8, false, TEST_CONSUMER);
-    gpiod_chip_close(chip);
-
+*/
+    gpiod_line_set_val(chip, 10, 0);
+    gpiod_line_set_val(chip, 11, 0);
+    for(int i=0; i < 16; i++){
+        gpio_offsets[i] = 40 + i; //Lines 40-55
+        gpio_values[i]= ((trigger_value >> i) & 0x1);
+    }
+    rv=gpio_set_val_multiple(gpio_offsets, gpio_values, 16);
+    if (rv) {
+        printf("Error gpiod_chip_multiple %d\n", rv);
+        //gpiod_chip_close(chip);
+        return -1;
+    }
+    gpiod_line_set_val(chip, 10, 1);
+    usleep(50);
+    gpiod_line_set_val(chip, 10, 0);
+    gpiod_line_set_val(chip, 11, 1);
+    usleep(50);
+    gpiod_line_set_val(chip, 10, 0);
+    gpiod_line_set_val(chip, 11, 0);
+    rv=gpio_set_val_multiple(gpio_offsets, gpio_values, GPIO_NUM_O_LINES);
     for(int i=0; i < GPIO_NUM_O_LINES; i++){
         gpio_offsets[i] = GPIO_LINE_OFFSET + i; //Lines 18-31
         gpio_values[i]= ((trigger_value >> i) & 0x1);
     }
-    rv = gpiod_simple_set_value_multiple(GPIO_CONSUMER, GPIO_CHIP_NAME,
-                                gpio_offsets, gpio_values, GPIO_NUM_O_LINES, false, NULL, NULL);
+    rv=gpio_set_val_multiple(gpio_offsets, gpio_values, GPIO_NUM_O_LINES);
     if (rv) {
         printf("Error gpiod_chip_multiple %d\n", rv);
         //gpiod_chip_close(chip);
         return -1;
 
     }
-//	export_gpio();
-	/*sprintf(fd_name,"intData.bin");*/
-	fd_data =  fopen("intData.bin","wb");
+    //	export_gpio();
+    /*sprintf(fd_name,"intData.bin");*/
+    fd_data =  fopen("intData.bin","wb");
 
-	// Listen to ctrl+c and ASSERT
-	signal(SIGINT, handle_sig);
+    // Listen to ctrl+c and ASSERT
+    signal(SIGINT, handle_sig);
 
     printf("* Acquiring IIO context\n");
-	ASSERT((ctx = iio_create_local_context()) && "No context");
-	ASSERT(iio_context_get_devices_count(ctx) > 0 && "No devices");
-	dev =  iio_context_find_device(ctx, "axi-ad9250-hpc-0");
-	ASSERT(dev && "No axi-ad9250-hpc-0 device found");
-	/* finds AD9361 streaming IIO channels */
-	rx0_a = iio_device_find_channel(dev, "voltage0", 0); // RX
-	ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel found");
-	iio_channel_enable(rx0_a);
-	rx0_b = iio_device_find_channel(dev, "voltage1", 0);
-	ASSERT(rx0_b && "No axi-ad9250-hpc-1 channel found");
-	iio_channel_enable(rx0_b);
+    ASSERT((ctx = iio_create_local_context()) && "No context");
+    ASSERT(iio_context_get_devices_count(ctx) > 0 && "No devices");
+    dev =  iio_context_find_device(ctx, "axi-ad9250-hpc-0");
+    ASSERT(dev && "No axi-ad9250-hpc-0 device found");
+    /* finds AD9361 streaming IIO channels */
+    rx0_a = iio_device_find_channel(dev, "voltage0", 0); // RX
+    ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel found");
+    iio_channel_enable(rx0_a);
+    rx0_b = iio_device_find_channel(dev, "voltage1", 0);
+    ASSERT(rx0_b && "No axi-ad9250-hpc-1 channel found");
+    iio_channel_enable(rx0_b);
     /*~1 ms buffers*/
     bufSamples = 256*1024;
     savBlock=N_CHAN *bufSamples; // 524288
@@ -200,15 +271,20 @@ int main (int argc, char **argv)
         perror("Could not create pAdcData buffer");
         shutdown();
     }
-    do{
-		iio_buffer_refill(rxbuf0);
-		p_inc = iio_buffer_step(rxbuf0);
-		p_end = iio_buffer_end(rxbuf0);
-		p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
-		p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);
+//    do{
+    for(int i=0; i < 32; i++){ // mas 16 ?
+        iio_buffer_refill(rxbuf0);
+        p_inc = iio_buffer_step(rxbuf0);
+        p_end = iio_buffer_end(rxbuf0);
+        p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
+        p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);
         pval16 = (int16_t *) (p_end - p_inc);
+        printf("p_dat, %p, %p, End %p,  %d\n", p_dat_a, p_dat_b, p_end,  *pval16);
+        if (*pval16 > trigLevel)
+            break;
+        usleep(100);
     }
-    while(*pval16 < trigLevel);
+  //  while(*pval16 < trigLevel);
     //memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
     for (int i=0; i<2; i++){
         memcpy(pAdcData + i*savBlock, p_dat_a + i*savBlock, savBlock);
@@ -217,23 +293,24 @@ int main (int argc, char **argv)
     printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples, bufSamples);
     printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end, n_samples, *pval16);
     for (int i=0; i<64; i++){
-		iio_buffer_refill(rxbuf0);
-		p_inc = iio_buffer_step(rxbuf0);
-		p_end = iio_buffer_end(rxbuf0);
-		p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
+        iio_buffer_refill(rxbuf0);
+        p_inc = iio_buffer_step(rxbuf0);
+        p_end = iio_buffer_end(rxbuf0);
+        p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
         for (int j=0; j<2; j++){
             memcpy(pAdcData + (j+2)*savBlock, p_dat_a + j*savBlock, savBlock);
         }
-//		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
-	}
-	printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,(p_dat_a -p_end)/p_inc, iio_device_get_sample_size(dev));
-	fwrite(pAdcData, 4, savBlock, fd_data); // Cannot be after shutdown() ???
+        //		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
+    }
+    printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,(p_dat_a -p_end)/p_inc, iio_device_get_sample_size(dev));
+    fwrite(pAdcData, 4, savBlock, fd_data); // Cannot be after shutdown() ???
 
     shutdown();
     if(pAdcData) free(pAdcData);
     fclose(fd_data);
-	printf("Program Ended\n");
+    printf("Program Ended\n");
 
+    gpiod_chip_close(chip);
     return 0;
 }
 
