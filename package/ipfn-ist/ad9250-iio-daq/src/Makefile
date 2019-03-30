@@ -1,6 +1,6 @@
 # libiio - Library for interfacing industrial I/O (IIO) devices
 
-BUILDROOT_HOME=/home/bernardo/FPGA/BUILDROOT/buildroot
+BUILDROOT_HOME=/home/bernardo/Broot/buildroot
 CC=$(BUILDROOT_HOME)/output/host/usr/bin/microblazeel-linux-gcc
 CFLAGS=--sysroot=$(BUILDROOT_HOME)/output/staging
 INCLUDES=
