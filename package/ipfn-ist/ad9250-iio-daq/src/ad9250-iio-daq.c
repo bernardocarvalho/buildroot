@@ -93,7 +93,10 @@ static void handle_sig(int sig)
 //http://www.wiki.xilinx.com/GPIO+User+Space+App
 /*static void export_gpio(void ){*/
 /*int exportfd;*/
-
+/* Since linux 4.8 the GPIO sysfs interface is deprecated. User space should use
+the character device instead. This library encapsulates the ioctl calls and
+data structures behind a straightforward API.
+*/
 /*printf("GPIO test running...\n");*/
 /*// The GPIO has to be exported to be able to see it*/
 /*// in sysfs*/
@@ -105,8 +108,9 @@ static void handle_sig(int sig)
 
 /*write(exportfd, "458", 4);*/
 /*close(exportfd);*/
-/*}*/
-int gpio_set_val_multiple(const unsigned int *offsets,
+/*}
+
+ * int gpio_set_val_multiple(const unsigned int *offsets,
         const int *values, unsigned int num_lines){
     int rv;
     rv = gpiod_simple_set_value_multiple(GPIO_CONSUMER, GPIO_CHIP_NAME,
@@ -119,6 +123,8 @@ int gpio_set_val_multiple(const unsigned int *offsets,
     }
     return rv;
 }
+
+
 int gpiod_line_set_val(struct gpiod_chip *chip,  unsigned int offset, 
         int value){
     int rv;
@@ -153,6 +159,7 @@ int gpiod_line_output(struct gpiod_chip *chip,  unsigned int offset ){
     }
     return 0;
 }
+*/
 /* simple configuration and streaming */
 int main (int argc, char **argv)
 {
@@ -173,57 +180,60 @@ int main (int argc, char **argv)
 
     /*char fd_name[64];*/
     FILE * fd_data;
-    //Need to cp target/usr/lib/libgpio* staging/usr/lib
+
     int rv;
-    struct gpiod_chip *chip;
     //struct gpiod_line_bulk bulk;
     unsigned int gpio_offsets[40];
     int gpio_values[40];
     unsigned int trigger_value = 0x0020;
-    chip = gpiod_chip_open("/dev/gpiochip0");
-    if (!chip){
-        printf("Error gpiod_chip_open\n");
-        return -1;
-    }
     //TEST_ASSERT_NOT_NULL(chip);
     //    rv = gpiod_ctxless_get_value_multiple(GPIO_CHIP, gpio_offsets,
     //                                gpio_values, 8, false, TEST_CONSUMER);
     //gpiod_chip_close(chip);
+/*
     gpiod_line_output(chip, 9);
     gpiod_line_set_val(chip, 9, 0);
     gpiod_line_output(chip, 10);
     gpiod_line_output(chip, 11);
-/*
-    gpio_offsets[0] = i; //Lines 18-31
+   // gpio_offsets[0] = i; //Lines 18-31
         gpio_values[i]= ((trigger_value >> i) & 0x1);
+*/
     for(int i=0; i < 2; i++){
-        gpio_offsets[i] = 10 + i; //Lines 10-11 address lines
+        gpio_offsets[i] = 11 + i; //Lines 10-11 address lines
         gpio_values[i]= 0;
     }
-    rv=gpio_set_val_multiple(gpio_offsets, gpio_values, 2);
+    rv = gpiod_ctxless_set_value_multiple(GPIO_CHIP_NAME,gpio_offsets, 
+    gpio_values, 2, false, GPIO_CONSUMER, NULL, NULL);
+    //rv=gpio_set_val_multiple(gpio_offsets, gpio_values, 2);
     if (rv) {
         printf("Error gpiod_chip_multiple %d\n", rv);
         //gpiod_chip_close(chip);
         return -1;
     }
-*/
-    gpiod_line_set_val(chip, 10, 0);
+/*    gpiod_line_set_val(chip, 10, 0);
     gpiod_line_set_val(chip, 11, 0);
+*/
     for(int i=0; i < 16; i++){
         gpio_offsets[i] = 40 + i; //Lines 40-55
         gpio_values[i]= ((trigger_value >> i) & 0x1);
     }
-    rv=gpio_set_val_multiple(gpio_offsets, gpio_values, 16);
+    rv = gpiod_ctxless_set_value_multiple(GPIO_CHIP_NAME,gpio_offsets, 
+    gpio_values, 16, false, GPIO_CONSUMER, NULL, NULL);
+    //rv=gpio_set_val_multiple(gpio_offsets, gpio_values, 16);
     if (rv) {
         printf("Error gpiod_chip_multiple %d\n", rv);
         //gpiod_chip_close(chip);
         return -1;
     }
-    gpiod_line_set_val(chip, 10, 1);
+    rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME,11, 1, false, GPIO_CONSUMER, NULL, NULL);
+    //gpiod_line_set_val(chip, 10, 1);
     usleep(50);
-    gpiod_line_set_val(chip, 10, 0);
-    gpiod_line_set_val(chip, 11, 1);
+    rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME,11, 0, false, GPIO_CONSUMER, NULL, NULL);
+    //gpiod_line_set_val(chip, 10, 0);
+    rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME,12, 1, false, GPIO_CONSUMER, NULL, NULL);
+    //gpiod_line_set_val(chip, 11, 1);
     usleep(50);
+ /*   
     gpiod_line_set_val(chip, 10, 0);
     gpiod_line_set_val(chip, 11, 0);
     rv=gpio_set_val_multiple(gpio_offsets, gpio_values, GPIO_NUM_O_LINES);
@@ -232,6 +242,7 @@ int main (int argc, char **argv)
         gpio_values[i]= ((trigger_value >> i) & 0x1);
     }
     rv=gpio_set_val_multiple(gpio_offsets, gpio_values, GPIO_NUM_O_LINES);
+  */
     if (rv) {
         printf("Error gpiod_chip_multiple %d\n", rv);
         //gpiod_chip_close(chip);
@@ -309,8 +320,8 @@ int main (int argc, char **argv)
     if(pAdcData) free(pAdcData);
     fclose(fd_data);
     printf("Program Ended\n");
-
-    gpiod_chip_close(chip);
+    //close(fd_gpio);
+    //gpiod_chip_close(chip);
     return 0;
 }
 
