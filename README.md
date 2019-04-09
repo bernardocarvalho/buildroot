@@ -34,8 +34,7 @@ How to build AD Linux file for Microblaze Linux
 =====================================
 
 1. `Compile HDL (master branch) with Vivado 2018.2  <https://github.com/analogdevicesinc/hdl>`_
-2. `Build Linux `
-
+2. `Build Linux)
 .. code-block:: bash
  
 ```bash
