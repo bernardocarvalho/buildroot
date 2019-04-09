@@ -4,14 +4,14 @@
 Buildroot files for Xilinx KC705 linux and fmcjesdadc1 project board
 
 ## Steps
-### 1
+
 
 
 How to build Rootfs file for Microblaze Linux
 =====================================
 
-1. `Clone Buildroot Core ` [Buildroot](http://docs.platformio.org/page/core.html)
-2. `Install Buildroot  fmcjesdadc1 components`
+1. `Clone Buildroot Core ` [Buildroot](https://github.com/buildroot)
+2. `Clone Buildroot special fmcjesdadc1 components`
 
 .. code-block:: bash 
 
@@ -30,7 +30,7 @@ How to build Rootfs file for Microblaze Linux
     > make menuconfig
     > make
 
-How to build AD Linux file for Microblaze Linux
+How to build AD Linux Kernel for Microblaze (Linux buildroot 4.9.0-g7cf8748) 
 =====================================
 
 1. `Compile HDL (master branch) with Vivado 2018.2  <https://github.com/analogdevicesinc/hdl>`_
