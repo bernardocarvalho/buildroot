@@ -1,3 +1,2 @@
--I/home/bernardo/FPGA/BUILDROOT/buildroot/output/build/libgpiod-v0.3/include
-let g:syntastic_c_include_dirs = [".", "/home/bernardo/FPGA/BUILDROOT/buildroot/output/build/libgpiod-v0.3/include"]
-
+-I/home/bernardo/FPGA/BUILDROOT/buildroot/output/staging/usr/include
+-I/home/bernardo/FPGA/BUILDROOT/buildroot/output/microblazeel-buildroot-linux-uclibc/sysroot/usr/include
