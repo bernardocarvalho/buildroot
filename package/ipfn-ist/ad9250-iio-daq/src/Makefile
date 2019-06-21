@@ -2,8 +2,10 @@
 # libiio - Library for interfacing industrial I/O (IIO) devices
 
 # Need to be absolute path
-BUILDROOT_HOME=/home/bernardo/FPGA/BUILDROOT/buildroot
-CC=$(BUILDROOT_HOME)/output/host/usr/bin/microblazeel-linux-gcc
+#BUILDROOT_HOME=/home/bernardo/FPGA/BUILDROOT/buildroot
+BUILDROOT_HOME=/home/bernardo/FPGA/AD-GIT/buildroot
+#CC=$(BUILDROOT_HOME)/output/host/usr/bin/microblazeel-linux-gcc
+CC=$(BUILDROOT_HOME)/output/host/usr/bin/microblazeel-xilinx-linux-gnu-cc
 CFLAGS=--sysroot=$(BUILDROOT_HOME)/output/staging
 INCLUDES=
 LFLAGS=
@@ -23,4 +25,3 @@ $(TARGET): $(TARGET).o
 
 clean:
 	rm -f $(TARGET) $(TARGET:%=%.o)
-
