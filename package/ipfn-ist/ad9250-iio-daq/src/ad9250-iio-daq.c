@@ -56,13 +56,13 @@ enum iodev { RX, TX };
 /* IIO structs required for streaming */
 static struct iio_context *ctx = NULL;
 static struct iio_device *dev0 = NULL;
-/*static struct iio_device *dev1 = NULL;*/
+static struct iio_device *dev1 = NULL;
 static struct iio_channel *rx0_a = NULL;
 static struct iio_channel *rx0_b = NULL;
 static struct iio_channel *rx1_a = NULL;
 static struct iio_channel *rx1_b = NULL;
 static struct iio_buffer *rxbuf0 = NULL;
-// static struct iio_buffer  *rxbuf0_b = NULL;
+static struct iio_buffer *rxbuf1 = NULL;
 /*static struct iio_buffer  *txbuf = NULL;*/
 
 static bool stop;
@@ -72,6 +72,9 @@ static void shutdown_iio() {
   printf("* Destroying buffers\n");
   if (rxbuf0) {
     iio_buffer_destroy(rxbuf0);
+  }
+  if (rxbuf1) {
+    iio_buffer_destroy(rxbuf1);
   }
   /*if (txbuf) { iio_buffer_destroy(txbuf); }*/
   printf("* Disabling streaming channels\n");
@@ -133,7 +136,6 @@ int main(int argc, char **argv) {
   char *pAdcData = NULL;
   ptrdiff_t p_inc;
   int16_t *pval16;
-  // int16_t trigLevel = 100;//2000;
   unsigned int n_samples, bufSamples, savBytes;
   unsigned int bufSize, savBlock; // =128*4096;
 
@@ -141,39 +143,32 @@ int main(int argc, char **argv) {
   FILE *fd_data;
 
   int rv, ctx_cnt;
-  int trigger_value = 0x0025;
+  int trigger_value = 4000; // 0x0025;
   /*reset address Lines*/
   rv = set_multiple_gpio(11, 2, 0);
-  /*for(int i=0; i < 2; i++){*/
-  /*gpio_offsets[i] = 11 + i; //Lines 11-12, address lines*/
-  /*gpio_values[i]= 0;*/
-  /*}*/
-  /*rv = gpiod_ctxless_set_value_multiple(GPIO_CHIP_NAME,gpio_offsets, */
-  /*gpio_values, 2, false, GPIO_CONSUMER, NULL, NULL);*/
   if (rv) {
     printf("Error gpiod_chip_multiple %d\n", rv);
     return -1;
   }
   rv = set_multiple_gpio(40, 16, trigger_value); // Lines 40-55
-                                                 /*
-                                                  * for(int i=0; i < 16; i++){
-                                                     gpio_offsets[i] = 40 + i; //Lines 40-55
-                                                     gpio_values[i]= ((trigger_value >> i) & 0x1);
-                                                 }
-                                                 rv = gpiod_ctxless_set_value_multiple(GPIO_CHIP_NAME,gpio_offsets,
-                                                         gpio_values, 16, false, GPIO_CONSUMER, NULL, NULL);*/
   if (rv) {
     printf("Error gpiod_chip_multiple %d\n", rv);
     return -1;
   }
+  // Set Address : 01
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 11, 1, false, GPIO_CONSUMER,
                                NULL, NULL);
   usleep(50);
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 11, 0, false, GPIO_CONSUMER,
                                NULL, NULL);
+  trigger_value = -4000;                         // 0x0025;
+  rv = set_multiple_gpio(40, 16, trigger_value); // Lines 40-55
+  // Set Address : 10
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 12, 1, false, GPIO_CONSUMER,
                                NULL, NULL);
   usleep(50);
+  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 12, 0, false, GPIO_CONSUMER,
+                               NULL, NULL);
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 13, 0, false, GPIO_CONSUMER,
                                NULL, NULL);
   if (rv) {
@@ -214,7 +209,24 @@ int main(int argc, char **argv) {
 */
   iio_channel_enable(rx0_a);
   iio_channel_enable(rx0_b);
-  /*reset Trigger (also first blink LED. delay ~20 ms */
+
+  /*printf("ctx_cnt=%d\n", ctx_cnt);*/
+  dev1 = iio_context_find_device(ctx, "axi-ad9250-hpc-1");
+  ASSERT(dev1 && "No axi-ad9250-hpc-1 device found");
+  rx1_a = iio_device_find_channel(dev1, "voltage0", 0); // RX
+  ASSERT(rx1_a && "No axi-ad9250-hpc-1 channel 0 found");
+  iio_channel_enable(rx1_a);
+  rx1_b = iio_device_find_channel(dev1, "voltage1", 0); // RX
+  ASSERT(rx1_b && "No axi-ad9250-hpc-1 channel 1 found");
+  iio_channel_enable(rx1_b);
+  rxbuf1 = iio_device_create_buffer(dev1, bufSamples, false);
+  if (!rxbuf1) {
+    perror("Could not create RX buffer 1");
+    shutdown_iio();
+  }
+  /*reset Trigger (also first blink LED. delay ~26 ms */
+  /* Wavwetek 395 MOdel: Pulse mode, 1ms period, 800 ns /800 ns Leading/Trail,
+   * 30 count */
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 9, 1, false, GPIO_CONSUMER, NULL,
                                NULL);
   rxbuf0 = iio_device_create_buffer(dev0, bufSamples, false);
@@ -222,19 +234,6 @@ int main(int argc, char **argv) {
     perror("Could not create RX buffer");
     shutdown_iio();
   }
-  /*
-    printf("ctx_cnt=%d\n", ctx_cnt);
-    dev1 = iio_context_find_device(ctx, "axi-ad9250-hpc-1");
-    ASSERT(dev1 && "No axi-ad9250-hpc-1 device found");
-    rx1_a = iio_device_find_channel(dev1, "voltage0", 0); // RX
-    ASSERT(rx1_a && "No axi-ad9250-hpc-1 channel 0 found");
-    iio_channel_enable(rx1_a);
-    rx1_b = iio_device_find_channel(dev1, "voltage1", 0); // RX
-    ASSERT(rx1_b && "No axi-ad9250-hpc-1 channel 1 found");
-    iio_channel_enable(rx1_b);
-  */
-  //    do{
-  // usleep(1000);
   /*
    *for (int i = 0; i < 1; i++) { // mas 16 ?
    *  iio_buffer_refill(rxbuf0);
@@ -260,6 +259,7 @@ int main(int argc, char **argv) {
   /*}*/
   for (int i = 0; i < N_BLOCKS; i++) {
     iio_buffer_refill(rxbuf0);
+    iio_buffer_refill(rxbuf1);
     p_inc = iio_buffer_step(rxbuf0);
     p_end = iio_buffer_end(rxbuf0);
     p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
