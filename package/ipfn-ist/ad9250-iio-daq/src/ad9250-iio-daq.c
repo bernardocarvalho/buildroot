@@ -37,7 +37,7 @@
 #define GPIO_NUM_O_LINES 14
 #define GPIO_LINE_OFFSET 18
 #define N_CHAN 2
-#define N_BLOCKS 4 // Number of RX buffers to save
+#define N_BLOCKS 4 //  Number of RX buffers to save, 16ms
 #define GPIO_CHIP_NAME "/dev/gpiochip0"
 #define GPIO_CONSUMER "gpiod-consumer"
 #define GPIO_MAX_LINES 64
@@ -69,7 +69,7 @@ static bool stop;
 
 /* cleanup and exit */
 static void shutdown_iio() {
-  printf("* Destroying buffers\n");
+  printf("* Destroying IIO buffers\n");
   if (rxbuf0) {
     iio_buffer_destroy(rxbuf0);
   }
@@ -134,6 +134,7 @@ int main(int argc, char **argv) {
   //	ssize_t nbytes_rx;//, nbytes_tx;
   char *p_dat_a, *p_end, *p_dat_b;
   char *pAdcData = NULL;
+  char *pAdcData1 = NULL;
   ptrdiff_t p_inc;
   int16_t *pval16;
   unsigned int n_samples, bufSamples, savBytes;
@@ -141,6 +142,7 @@ int main(int argc, char **argv) {
 
   /*char fd_name[64];*/
   FILE *fd_data;
+  FILE *fd_data1;
 
   int rv, ctx_cnt;
   int trigger_value = 4000; // 0x0025;
@@ -177,11 +179,12 @@ int main(int argc, char **argv) {
   }
   /*sprintf(fd_name,"intData.bin");*/
   fd_data = fopen("intData.bin", "wb");
+  fd_data1 = fopen("intData34.bin", "wb");
 
   // Listen to ctrl+c and ASSERT
   signal(SIGINT, handle_sig);
 
-  /* ~2 ms buffers*/
+  /* ~4 ms buffers*/
   bufSamples = 1024 * 1024;       // number of samples per buff RX IIO
   savBlock = N_CHAN * bufSamples; //
   bufSize = savBlock * sizeof(int16_t);
@@ -189,6 +192,11 @@ int main(int argc, char **argv) {
   pAdcData = (char *)malloc(savBytes);
   if (!pAdcData) {
     perror("Could not create pAdcData buffer");
+    shutdown_iio();
+  }
+  pAdcData1 = (char *)malloc(savBytes);
+  if (!pAdcData1) {
+    perror("Could not create pAdcData1 buffer");
     shutdown_iio();
   }
   printf("* Acquiring IIO context\n");
@@ -224,16 +232,19 @@ int main(int argc, char **argv) {
     perror("Could not create RX buffer 1");
     shutdown_iio();
   }
-  /*reset Trigger (also first blink LED. delay ~26 ms */
-  /* Wavwetek 395 MOdel: Pulse mode, 1ms period, 800 ns /800 ns Leading/Trail,
-   * 30 count */
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 9, 1, false, GPIO_CONSUMER, NULL,
-                               NULL);
+  /* Starts acquition channels 0,1*/
   rxbuf0 = iio_device_create_buffer(dev0, bufSamples, false);
   if (!rxbuf0) {
     perror("Could not create RX buffer");
     shutdown_iio();
   }
+  /* arm Trigger (also first blink LED. delay ~8 ms */
+  /* Wavetek 395 Model: Pulse mode, 1ms period, 800 ns /800 ns Leading/Trail,
+   * 10 count */
+  // for faster IO see
+  // https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842018/Linux+User+Mode+Pseudo+Driver
+  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 9, 1, false, GPIO_CONSUMER, NULL,
+                               NULL);
   /*
    *for (int i = 0; i < 1; i++) { // mas 16 ?
    *  iio_buffer_refill(rxbuf0);
@@ -263,16 +274,18 @@ int main(int argc, char **argv) {
     p_inc = iio_buffer_step(rxbuf0);
     p_end = iio_buffer_end(rxbuf0);
     p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
-    p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);
+    /*p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);*/
+    p_dat_b = (char *)iio_buffer_first(rxbuf1, rx1_a);
     pval16 = (int16_t *)(p_end - p_inc);
     memcpy(pAdcData + bufSize * i, p_dat_a, bufSize);
+    memcpy(pAdcData1 + bufSize * i, p_dat_b, bufSize);
     /*for (int j = 0; j < 2; j++) {*/
     /*memcpy(pAdcData + (j + 2) * savBlock, p_dat_a + j * savBlock, savBlock);*/
     /*}*/
     //		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
   }
   /*usleep(10);*/
-  // turns OFF LED
+  // turns OFF LED, reset trigger
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 9, 0, false, GPIO_CONSUMER, NULL,
                                NULL);
   n_samples = (p_end - p_dat_a) / p_inc;
@@ -284,11 +297,14 @@ int main(int argc, char **argv) {
          (p_dat_a - p_end) / p_inc, iio_device_get_sample_size(dev0));
 
   shutdown_iio();
-  fwrite(pAdcData, N_BLOCKS, bufSize,
-         fd_data); // Cannot be after shutdown() ???
+  printf("* Saving Data to Files\n");
+  fwrite(pAdcData, N_BLOCKS, bufSize, fd_data);
+  /*fwrite(pAdcData1, N_BLOCKS, bufSize, fd_data1);*/
   if (pAdcData)
     free(pAdcData);
+  free(pAdcData1);
   fclose(fd_data);
+  fclose(fd_data1);
   printf("Program Ended\n");
   return 0;
 }
