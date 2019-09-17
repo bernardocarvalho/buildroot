@@ -1,2 +1,3 @@
--I/home/bernardo/FPGA/BUILDROOT/buildroot/output/staging/usr/include
--I/home/bernardo/FPGA/BUILDROOT/buildroot/output/microblazeel-buildroot-linux-uclibc/sysroot/usr/include
+-I/home/bernardo/FPGA/BUILDROOT/buildroot/output/build/libgpiod-1.3/include
+"-I/home/bernardo/FPGA/BUILDROOT/buildroot/output/staging/usr/include
+" -I/home/bernardo/FPGA/BUILDROOT/buildroot/output/microblazeel-buildroot-linux-uclibc/sysroot/usr/include

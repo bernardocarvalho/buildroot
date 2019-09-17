@@ -7,14 +7,13 @@ Buildroot files for Xilinx KC705 linux and fmcjesdadc1 project board
 
 
 
-How to build Rootfs file for Microblaze Linux
+How to build Rootfs file and LInux for Microblaze
 =====================================
 
-1. `Clone Buildroot Core ` [Buildroot](https://github.com/buildroot)
+1. `Clone Buildroot Core` [Buildroot] (https://github.com/buildroot)
 2. `Clone Buildroot special fmcjesdadc1 components`
 
-.. code-block:: bash 
-
+```bash
     # Make Change directory to
     > mkdir BRdir
     > cd BRdir
@@ -29,6 +28,7 @@ How to build Rootfs file for Microblaze Linux
     # configure other choices 
     > make menuconfig
     > make
+```
 
 How to build AD Linux Kernel for Microblaze (Linux buildroot 4.9.0-g7cf8748) 
 =====================================
