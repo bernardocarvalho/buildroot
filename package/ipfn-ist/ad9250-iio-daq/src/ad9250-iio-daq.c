@@ -34,14 +34,22 @@
 #define MHZ(x) ((long long)(x * 1000000.0 + .5))
 /*#define GHZ(x) ((long long)(x*1000000000.0 + .5))*/
 
-#define GPIO_NUM_O_LINES 14
-#define GPIO_LINE_OFFSET 18
+//#define GPIO_NUM_O_LINES 14
+//#define GPIO_LINE_OFFSET 18
 #define N_CHAN 2
 #define N_BLOCKS 4 //  Number of RX buffers to save, 16ms
 #define GPIO_CHIP_NAME "/dev/gpiochip0"
 #define GPIO_CONSUMER "gpiod-consumer"
 #define GPIO_MAX_LINES 64
-
+/*
+line   9:      unnamed       unused  output  active-high Trigger active High
+line  10:      unnamed       unused   input  active-high
+line  11:      unnamed       unused  output  active-high Address Line
+line  12:      unnamed       unused  output  active-high Address Line
+line  13:      unnamed       unused  output  active-high
+line  32:      unnamed "sysref-enable" output active-high [used]
+Lines 40-55 Trigger Value
+*/
 #define ASSERT(expr)                                                           \
   {                                                                            \
     if (!(expr)) {                                                             \
@@ -134,142 +142,6 @@ int main(int argc, char **argv) {
   //	ssize_t nbytes_rx;//, nbytes_tx;
   char *p_dat_a, *p_end, *p_dat_b;
   char *pAdcData = NULL;
-<<<<<<< HEAD
-  ptrdiff_t p_inc;
-  int16_t *pval16;
-  // int16_t trigLevel = 100;//2000;
-  unsigned int n_samples, bufSamples, savBytes;
-  unsigned int savBlock; // =128*4096;
-
-  /*char fd_name[64];*/
-  FILE *fd_data;
-
-  int rv, ctx_cnt;
-  int trigger_value = 0x0025;
-  rv = set_multiple_gpio(11, 2, 0);
-  /*for(int i=0; i < 2; i++){*/
-  /*gpio_offsets[i] = 11 + i; //Lines 10-11 address lines*/
-  /*gpio_values[i]= 0;*/
-  /*}*/
-  /*rv = gpiod_ctxless_set_value_multiple(GPIO_CHIP_NAME,gpio_offsets, */
-  /*gpio_values, 2, false, GPIO_CONSUMER, NULL, NULL);*/
-  if (rv) {
-    printf("Error gpiod_chip_multiple %d\n", rv);
-    return -1;
-  }
-  rv = set_multiple_gpio(40, 16, trigger_value); // Lines 40-55
-  /*
-   * for(int i=0; i < 16; i++){
-      gpio_offsets[i] = 40 + i; //Lines 40-55
-      gpio_values[i]= ((trigger_value >> i) & 0x1);
-  }
-  rv = gpiod_ctxless_set_value_multiple(GPIO_CHIP_NAME,gpio_offsets,
-          gpio_values, 16, false, GPIO_CONSUMER, NULL, NULL);*/
-  if (rv) {
-    printf("Error gpiod_chip_multiple %d\n", rv);
-    return -1;
-  }
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 11, 1, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  usleep(50);
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 11, 0, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 12, 1, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  usleep(50);
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 13, 0, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  if (rv) {
-    printf("Error gpiod_set valchi %d\n", rv);
-    return -1;
-  }
-  /*sprintf(fd_name,"intData.bin");*/
-  fd_data = fopen("intData.bin", "wb");
-
-  // Listen to ctrl+c and ASSERT
-  signal(SIGINT, handle_sig);
-
-  printf("* Acquiring IIO context\n");
-  ASSERT((ctx = iio_create_local_context()) && "No context");
-  ASSERT(ctx_cnt = iio_context_get_devices_count(ctx) > 0 && "No devices");
-  dev0 = iio_context_find_device(ctx, "axi-ad9250-hpc-0");
-  ASSERT(dev0 && "No axi-ad9250-hpc-0 device found");
-  /* finds AD9250 streaming IIO channels */
-  rx0_a = iio_device_find_channel(dev0, "voltage0", 0); // RX
-  ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel 0 found");
-  iio_channel_enable(rx0_a);
-  rx0_b = iio_device_find_channel(dev0, "voltage1", 0);
-  ASSERT(rx0_b && "No axi-ad9250-hpc-0 channel 1 found");
-  iio_channel_enable(rx0_b);
-
-  printf("ctx_cnt=%d\n", ctx_cnt);
-  dev1 = iio_context_find_device(ctx, "axi-ad9250-hpc-1");
-  ASSERT(dev1 && "No axi-ad9250-hpc-1 device found");
-  rx1_a = iio_device_find_channel(dev1, "voltage0", 0); // RX
-  ASSERT(rx1_a && "No axi-ad9250-hpc-1 channel 0 found");
-  iio_channel_enable(rx1_a);
-  rx1_b = iio_device_find_channel(dev1, "voltage1", 0); // RX
-  ASSERT(rx1_b && "No axi-ad9250-hpc-1 channel 1 found");
-  iio_channel_enable(rx1_b);
-
-  /* ~1 ms buffers*/
-  bufSamples = 256 * 1024;
-  savBlock = N_CHAN * bufSamples; // 524288
-  rxbuf0 = iio_device_create_buffer(dev0, bufSamples, false);
-  if (!rxbuf0) {
-    perror("Could not create RX buffer");
-    shutdown_iio();
-  }
-  savBytes = 2 * N_CHAN * sizeof(int16_t) * bufSamples;
-  pAdcData = (char *)malloc(savBytes);
-  if (!pAdcData) {
-    perror("Could not create pAdcData buffer");
-    shutdown_iio();
-  }
-  //    do{
-  for (int i = 0; i < 32; i++) { // mas 16 ?
-    iio_buffer_refill(rxbuf0);
-    p_inc = iio_buffer_step(rxbuf0);
-    p_end = iio_buffer_end(rxbuf0);
-    p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
-    p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);
-    pval16 = (int16_t *)(p_end - p_inc);
-    if (*pval16 > 4) {
-      printf("trigger!\n");
-      printf("p_dat, %p, %p, End %p,  %d\n", p_dat_a, p_dat_b, p_end, *pval16);
-      break;
-    }
-    //    usleep(10);
-  }
-  //  while(*pval16 < trigLevel);
-  // memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
-  for (int i = 0; i < 2; i++) {
-    memcpy(pAdcData + i * savBlock, p_dat_a + i * savBlock, savBlock);
-  }
-  n_samples = (p_end - p_dat_a) / p_inc;
-  printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples,
-         bufSamples);
-  printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end,
-         n_samples, *pval16);
-  for (int i = 0; i < 64; i++) {
-    iio_buffer_refill(rxbuf0);
-    p_inc = iio_buffer_step(rxbuf0);
-    p_end = iio_buffer_end(rxbuf0);
-    p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
-    for (int j = 0; j < 2; j++) {
-      memcpy(pAdcData + (j + 2) * savBlock, p_dat_a + j * savBlock, savBlock);
-    }
-    //		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
-  }
-  printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,
-         (p_dat_a - p_end) / p_inc, iio_device_get_sample_size(dev0));
-
-  shutdown_iio();
-  fwrite(pAdcData, 4, savBlock, fd_data); // Cannot be after shutdown() ???
-  if (pAdcData)
-    free(pAdcData);
-  fclose(fd_data);
-=======
   char *pAdcData1 = NULL;
   ptrdiff_t p_inc;
   int16_t *pval16;
@@ -441,7 +313,6 @@ int main(int argc, char **argv) {
   free(pAdcData1);
   fclose(fd_data);
   fclose(fd_data1);
->>>>>>> 13abeaa4c39c1804902a4188887a033da25becfa
   printf("Program Ended\n");
   return 0;
 }

@@ -1,9 +1,9 @@
 #Makefile fro Cross compile Mibcroblaze  apps with Buiuld root
 # libiio - Library for interfacing industrial I/O (IIO) devices
 
-# Need to be absolute path
-#BUILDROOT_HOME=/home/bernardo/FPGA/BUILDROOT/buildroot
-BUILDROOT_HOME=/home/bernardo/FPGA/AD-GIT/buildroot
+# Needs to be absolute path
+#BUILDROOT_HOME=/home/bernardo/FPGA/AD-GIT/buildroot
+BUILDROOT_HOME=/home/bernardo/tmp/BRdir/buildroot
 #CC=$(BUILDROOT_HOME)/output/host/usr/bin/microblazeel-linux-gcc
 CC=$(BUILDROOT_HOME)/output/host/usr/bin/microblazeel-xilinx-linux-gnu-cc
 CFLAGS=--sysroot=$(BUILDROOT_HOME)/output/staging
