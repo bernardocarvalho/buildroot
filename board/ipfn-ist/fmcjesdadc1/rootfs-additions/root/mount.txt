@@ -1,2 +1,2 @@
 mkdir /mnt/nfs
-mount  -o port=2049,nolock,proto=tcp 10.136.241.211:/opt/share /mnt/nfs
+mount  -o port=2049,nolock,proto=tcp 10.136.241.205:/opt/share /mnt/nfs
