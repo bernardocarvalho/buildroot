@@ -1,5 +1,5 @@
 /*
- * iio - AD9250 IIO streaming example
+ * iio - AD9250 IIO FMC ADC streaming
  * https://github.com/analogdevicesinc/libiio/blob/master/examples/ad9361-iiostream.c
  * Copyright (C) 2014 IABG mbH
  * Author: Michael Feilen <feilen_at_iabg.de>
@@ -41,6 +41,10 @@
 #define GPIO_CHIP_NAME "/dev/gpiochip0"
 #define GPIO_CONSUMER "gpiod-consumer"
 #define GPIO_MAX_LINES 64
+#define TRIG_REG_ADD_OFF 11
+#define TRIG_REG_WRT_OFF 13
+#define TRIG_REG_VAL_OFF 40
+
 /*
 line   9:      unnamed       unused  output  active-high Trigger active High
 line  10:      unnamed       unused   input  active-high
@@ -131,7 +135,35 @@ int set_multiple_gpio(unsigned int offset, unsigned int width, int value) {
                                         GPIO_CONSUMER, NULL, NULL);
   return rv;
 }
+int get_multiple_gpio(unsigned int offset, unsigned int width, int *value) {
+  int rv;
+  int data = 0;
+  unsigned int gpio_offsets[32];
+  int gpio_values[32];
+  if ((offset + width) > GPIO_MAX_LINES)
+    return -1;
+  for (int i = 0; i < width; i++)
+    gpio_offsets[i] = offset + i;
 
+  rv = gpiod_ctxless_get_value_multiple(
+      GPIO_CHIP_NAME, gpio_offsets, gpio_values, width, false, GPIO_CONSUMER);
+  for (int i = 0; i < width; i++)
+    data |= ((gpio_values[i]) & 0x1) << i;
+  *value = data;
+  return rv;
+}
+int write_trigger_reg(unsigned int reg, int value) {
+  int rv;
+  rv = set_multiple_gpio(TRIG_REG_ADD_OFF, 2, reg);
+  rv = set_multiple_gpio(TRIG_REG_VAL_OFF, 16, value); // Lines 40-55
+  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_REG_WRT_OFF, 1, false,
+                               GPIO_CONSUMER, NULL, NULL);
+  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_REG_WRT_OFF, 0, false,
+                               GPIO_CONSUMER, NULL, NULL);
+  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 12, 1, false, GPIO_CONSUMER,
+                               NULL, NULL);
+  return rv;
+}
 /* simple configuration and streaming */
 int main(int argc, char **argv) {
   // Streaming devices
@@ -154,7 +186,19 @@ int main(int argc, char **argv) {
 
   int rv, ctx_cnt;
   int trigger_value = 4000; // 0x0025;
-  /*reset address Lines*/
+  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_REG_WRT_OFF, 0, false,
+                               GPIO_CONSUMER, NULL, NULL);
+  rv = write_trigger_reg(1, trigger_value);
+  trigger_value = -6000; // 0x0025;
+  rv = write_trigger_reg(2, trigger_value);
+  trigger_value = 0;                                            // clear value;
+  rv = get_multiple_gpio(TRIG_REG_VAL_OFF, 16, &trigger_value); // Lines 40-55
+  if (rv) {
+    printf("Error get_multiple_gpio: %d\n", rv);
+    return -1;
+  }
+  printf("* gpiod_chip_multiple value %d\n", trigger_value);
+  /*reset address Lines
   rv = set_multiple_gpio(11, 2, 0);
   if (rv) {
     printf("Error gpiod_chip_multiple %d\n", rv);
@@ -185,6 +229,7 @@ int main(int argc, char **argv) {
     printf("Error gpiod_set valchi %d\n", rv);
     return -1;
   }
+  */
   /*sprintf(fd_name,"intData.bin");*/
   fd_data = fopen("intData.bin", "wb");
   fd_data1 = fopen("intData34.bin", "wb");
