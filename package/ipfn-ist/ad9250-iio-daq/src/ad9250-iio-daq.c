@@ -41,6 +41,7 @@
 #define GPIO_CHIP_NAME "/dev/gpiochip0"
 #define GPIO_CONSUMER "gpiod-consumer"
 #define GPIO_MAX_LINES 64
+#define TRIG_EN_OFF 9
 #define TRIG_REG_ADD_OFF 11
 #define TRIG_REG_WRT_OFF 13
 #define TRIG_REG_VAL_OFF 40
@@ -78,7 +79,6 @@ static struct iio_buffer *rxbuf1 = NULL;
 /*static struct iio_buffer  *txbuf = NULL;*/
 
 static bool stop;
-
 /* cleanup and exit */
 static void shutdown_iio() {
   printf("* Destroying IIO buffers\n");
@@ -108,6 +108,34 @@ static void shutdown_iio() {
     iio_context_destroy(ctx);
   }
   // exit(0);
+}
+
+static void config_iio_acq() {
+  int ctx_cnt;
+  printf("* Acquiring IIO context\n");
+
+  ASSERT((ctx = iio_create_local_context()) && "No context");
+  ASSERT(ctx_cnt = iio_context_get_devices_count(ctx) > 0 && "No devices");
+  dev0 = iio_context_find_device(ctx, "axi-ad9250-hpc-0");
+  ASSERT(dev0 && "No axi-ad9250-hpc-0 device found");
+  /* finds AD9250 streaming IIO channels */
+  rx0_a = iio_device_find_channel(dev0, "voltage0", 0); // RX
+  ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel 0 found");
+  rx0_b = iio_device_find_channel(dev0, "voltage1", 0);
+  ASSERT(rx0_b && "No axi-ad9250-hpc-0 channel 1 found");
+
+  iio_channel_enable(rx0_a);
+  iio_channel_enable(rx0_b);
+
+  /*printf("ctx_cnt=%d\n", ctx_cnt);*/
+  dev1 = iio_context_find_device(ctx, "axi-ad9250-hpc-1");
+  ASSERT(dev1 && "No axi-ad9250-hpc-1 device found");
+  rx1_a = iio_device_find_channel(dev1, "voltage0", 0); // RX
+  ASSERT(rx1_a && "No axi-ad9250-hpc-1 channel 0 found");
+  iio_channel_enable(rx1_a);
+  rx1_b = iio_device_find_channel(dev1, "voltage1", 0); // RX
+  ASSERT(rx1_b && "No axi-ad9250-hpc-1 channel 1 found");
+  iio_channel_enable(rx1_b);
 }
 
 static void handle_sig(int sig) {
@@ -184,52 +212,16 @@ int main(int argc, char **argv) {
   FILE *fd_data;
   FILE *fd_data1;
 
-  int rv, ctx_cnt;
+  int rv;
   int trigger_value = 4000; // 0x0025;
+  int delay_val = 0;
+  // Clear Write reg enable
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_REG_WRT_OFF, 0, false,
                                GPIO_CONSUMER, NULL, NULL);
   rv = write_trigger_reg(1, trigger_value);
+  rv = write_trigger_reg(3, trigger_value);
   trigger_value = -6000; // 0x0025;
   rv = write_trigger_reg(2, trigger_value);
-  trigger_value = 0;                                            // clear value;
-  rv = get_multiple_gpio(TRIG_REG_VAL_OFF, 16, &trigger_value); // Lines 40-55
-  if (rv) {
-    printf("Error get_multiple_gpio: %d\n", rv);
-    return -1;
-  }
-  printf("* gpiod_chip_multiple value %d\n", trigger_value);
-  /*reset address Lines
-  rv = set_multiple_gpio(11, 2, 0);
-  if (rv) {
-    printf("Error gpiod_chip_multiple %d\n", rv);
-    return -1;
-  }
-  rv = set_multiple_gpio(40, 16, trigger_value); // Lines 40-55
-  if (rv) {
-    printf("Error gpiod_chip_multiple %d\n", rv);
-    return -1;
-  }
-  // Set Address : 01
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 11, 1, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  usleep(50);
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 11, 0, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  trigger_value = -4000;                         // 0x0025;
-  rv = set_multiple_gpio(40, 16, trigger_value); // Lines 40-55
-  // Set Address : 10
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 12, 1, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  usleep(50);
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 12, 0, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 13, 0, false, GPIO_CONSUMER,
-                               NULL, NULL);
-  if (rv) {
-    printf("Error gpiod_set valchi %d\n", rv);
-    return -1;
-  }
-  */
   /*sprintf(fd_name,"intData.bin");*/
   fd_data = fopen("intData.bin", "wb");
   fd_data1 = fopen("intData34.bin", "wb");
@@ -252,40 +244,13 @@ int main(int argc, char **argv) {
     perror("Could not create pAdcData1 buffer");
     shutdown_iio();
   }
-  printf("* Acquiring IIO context\n");
-
-  ASSERT((ctx = iio_create_local_context()) && "No context");
-  ASSERT(ctx_cnt = iio_context_get_devices_count(ctx) > 0 && "No devices");
-  dev0 = iio_context_find_device(ctx, "axi-ad9250-hpc-0");
-  ASSERT(dev0 && "No axi-ad9250-hpc-0 device found");
-  /* finds AD9250 streaming IIO channels */
-  rx0_a = iio_device_find_channel(dev0, "voltage0", 0); // RX
-  ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel 0 found");
-  rx0_b = iio_device_find_channel(dev0, "voltage1", 0);
-  ASSERT(rx0_b && "No axi-ad9250-hpc-0 channel 1 found");
-
-  /*reset Trigger (also first blink LED. delay ~20 ms
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 9, 1, false, GPIO_CONSUMER, NULL,
-                               NULL);
-*/
-  iio_channel_enable(rx0_a);
-  iio_channel_enable(rx0_b);
-
-  /*printf("ctx_cnt=%d\n", ctx_cnt);*/
-  dev1 = iio_context_find_device(ctx, "axi-ad9250-hpc-1");
-  ASSERT(dev1 && "No axi-ad9250-hpc-1 device found");
-  rx1_a = iio_device_find_channel(dev1, "voltage0", 0); // RX
-  ASSERT(rx1_a && "No axi-ad9250-hpc-1 channel 0 found");
-  iio_channel_enable(rx1_a);
-  rx1_b = iio_device_find_channel(dev1, "voltage1", 0); // RX
-  ASSERT(rx1_b && "No axi-ad9250-hpc-1 channel 1 found");
-  iio_channel_enable(rx1_b);
+  config_iio_acq();
+  /* Starts acquition channels 0,1*/
   rxbuf1 = iio_device_create_buffer(dev1, bufSamples, false);
   if (!rxbuf1) {
     perror("Could not create RX buffer 1");
     shutdown_iio();
   }
-  /* Starts acquition channels 0,1*/
   rxbuf0 = iio_device_create_buffer(dev0, bufSamples, false);
   if (!rxbuf0) {
     perror("Could not create RX buffer");
@@ -296,10 +261,10 @@ int main(int argc, char **argv) {
    * 10 count */
   // for faster IO see
   // https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842018/Linux+User+Mode+Pseudo+Driver
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 9, 1, false, GPIO_CONSUMER, NULL,
-                               NULL);
+  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_EN_OFF, 1, false,
+                               GPIO_CONSUMER, NULL, NULL);
   /*
-   *for (int i = 0; i < 1; i++) { // mas 16 ?
+   *for (int i = 0; i < 1; i++) { // max 16 ?
    *  iio_buffer_refill(rxbuf0);
    *  p_inc = iio_buffer_step(rxbuf0);
    *  p_end = iio_buffer_end(rxbuf0);
@@ -335,12 +300,8 @@ int main(int argc, char **argv) {
     /*for (int j = 0; j < 2; j++) {*/
     /*memcpy(pAdcData + (j + 2) * savBlock, p_dat_a + j * savBlock, savBlock);*/
     /*}*/
-    //		fwrite(p_dat_a, 1, (p_end-p_dat_a), fd_data);
   }
   /*usleep(10);*/
-  // turns OFF LED, reset trigger
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, 9, 0, false, GPIO_CONSUMER, NULL,
-                               NULL);
   n_samples = (p_end - p_dat_a) / p_inc;
   printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples,
          bufSamples);
@@ -350,6 +311,16 @@ int main(int argc, char **argv) {
          (p_dat_a - p_end) / p_inc, iio_device_get_sample_size(dev0));
 
   shutdown_iio();
+  rv = get_multiple_gpio(TRIG_REG_VAL_OFF, 16, &delay_val); // Lines 40-55
+  if (rv) {
+    printf("Error get_multiple_gpio: %d\n", rv);
+    return -1;
+  }
+  printf("* get_multiple_gpio delay_val: %d, %.3f us\n", delay_val,
+         delay_val / 5.0 * 8e-3);
+  // turns OFF LED, reset trigger machine
+  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_EN_OFF, 0, false,
+                               GPIO_CONSUMER, NULL, NULL);
   printf("* Saving Data to Files\n");
   fwrite(pAdcData, N_BLOCKS, bufSize, fd_data);
   /*fwrite(pAdcData1, N_BLOCKS, bufSize, fd_data1);*/
