@@ -23,5 +23,8 @@ all: $(TARGET)
 $(TARGET): $(TARGET).o
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
+usergpio: usergpio.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+
 clean:
 	rm -f $(TARGET) $(TARGET:%=%.o)

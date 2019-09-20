@@ -13,6 +13,7 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
+ * Max aquisition continuous time is ~ 20 ms, 5 blocks
  *
  **/
 
@@ -23,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 //#include <sys/stat.h>
 #include <unistd.h>
@@ -37,15 +39,23 @@
 //#define GPIO_NUM_O_LINES 14
 //#define GPIO_LINE_OFFSET 18
 #define N_CHAN 2
-#define N_BLOCKS 4 //  Number of RX buffers to save, 16ms
+#define N_BLOCKS                                                               \
+  8 //  Number of RX buffers to save, 32ms, Max 16.5 good acquisition
 #define GPIO_CHIP_NAME "/dev/gpiochip0"
 #define GPIO_CONSUMER "gpiod-consumer"
 #define GPIO_MAX_LINES 64
-#define TRIG_EN_OFF 9
+#define TRIG_EN_OFF 36
 #define TRIG_REG_ADD_OFF 11
 #define TRIG_REG_WRT_OFF 13
 #define TRIG_REG_VAL_OFF 40
 
+#define GPIO_BASE_ADDRESS 0x40000000
+#define GPIO_0_DATA_OFFSET 0
+#define GPIO_DIRECTION_OFFSET 4
+#define GPIO_1_DATA_OFFSET 8
+
+#define MAP_SIZE 4096UL
+#define MAP_MASK (MAP_SIZE - 1)
 /*
 line   9:      unnamed       unused  output  active-high Trigger active High
 line  10:      unnamed       unused   input  active-high
@@ -132,10 +142,10 @@ static void config_iio_acq() {
   ASSERT(dev1 && "No axi-ad9250-hpc-1 device found");
   rx1_a = iio_device_find_channel(dev1, "voltage0", 0); // RX
   ASSERT(rx1_a && "No axi-ad9250-hpc-1 channel 0 found");
-  iio_channel_enable(rx1_a);
+  // iio_channel_enable(rx1_a);
   rx1_b = iio_device_find_channel(dev1, "voltage1", 0); // RX
   ASSERT(rx1_b && "No axi-ad9250-hpc-1 channel 1 found");
-  iio_channel_enable(rx1_b);
+  // iio_channel_enable(rx1_b);
 }
 
 static void handle_sig(int sig) {
@@ -200,21 +210,48 @@ int main(int argc, char **argv) {
   // size_t nrx = 0;
   //	size_t ntx = 0;
   //	ssize_t nbytes_rx;//, nbytes_tx;
-  char *p_dat_a, *p_end, *p_dat_b;
+  char *p_dat_a, *p_end; //, *p_dat_b;
   char *pAdcData = NULL;
   char *pAdcData1 = NULL;
   ptrdiff_t p_inc;
-  int16_t *pval16;
+  /*int16_t *pval16;*/
   unsigned int n_samples, bufSamples, savBytes;
   unsigned int bufSize, savBlock; // =128*4096;
 
   /*char fd_name[64];*/
   FILE *fd_data;
-  FILE *fd_data1;
-
+  FILE *fd_data1 = NULL;
   int rv;
   int trigger_value = 4000; // 0x0025;
   int delay_val = 0;
+  int memfd;
+  void *mapped_base, *mapped_dev_base;
+  off_t dev_base = GPIO_BASE_ADDRESS;
+  unsigned long ulval;
+  memfd = open("/dev/mem", O_RDWR | O_SYNC);
+  if (memfd == -1) {
+    printf("Can't open /dev/mem.\n");
+    exit(0);
+  }
+  printf("/dev/mem opened.\n");
+  // Map one page of memory into user space such that the device is in that
+  // page, but it may not be at the start of the page
+
+  mapped_base = mmap(0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, memfd,
+                     dev_base & ~MAP_MASK);
+  if (mapped_base == (void *)-1) {
+    printf("Can't map the memory to user space.\n");
+    exit(0);
+  }
+  printf("Memory mapped at address %p.\n", mapped_base);
+  // get the address of the device in user space which will be an offset from
+  // the base that was mapped as memory is mapped at the start of a page
+
+  mapped_dev_base = mapped_base + (dev_base & MAP_MASK);
+
+  // write to the direction register so all the GPIOs are on output to drive
+  // LEDs
+
   // Clear Write reg enable
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_REG_WRT_OFF, 0, false,
                                GPIO_CONSUMER, NULL, NULL);
@@ -224,7 +261,7 @@ int main(int argc, char **argv) {
   rv = write_trigger_reg(2, trigger_value);
   /*sprintf(fd_name,"intData.bin");*/
   fd_data = fopen("intData.bin", "wb");
-  fd_data1 = fopen("intData34.bin", "wb");
+  /*fd_data1 = fopen("intData34.bin", "wb");*/
 
   // Listen to ctrl+c and ASSERT
   signal(SIGINT, handle_sig);
@@ -239,18 +276,24 @@ int main(int argc, char **argv) {
     perror("Could not create pAdcData buffer");
     shutdown_iio();
   }
-  pAdcData1 = (char *)malloc(savBytes);
-  if (!pAdcData1) {
-    perror("Could not create pAdcData1 buffer");
-    shutdown_iio();
+  if (fd_data1) {
+    pAdcData1 = (char *)malloc(savBytes);
+    if (!pAdcData1) {
+      perror("Could not create pAdcData1 buffer");
+      shutdown_iio();
+    }
   }
   config_iio_acq();
+  ulval = 0x11;
+  *((unsigned long *)(mapped_dev_base + GPIO_1_DATA_OFFSET)) = ulval;
   /* Starts acquition channels 0,1*/
-  rxbuf1 = iio_device_create_buffer(dev1, bufSamples, false);
+  /*
+   rxbuf1 = iio_device_create_buffer(dev1, bufSamples, false);
   if (!rxbuf1) {
     perror("Could not create RX buffer 1");
     shutdown_iio();
   }
+  */
   rxbuf0 = iio_device_create_buffer(dev0, bufSamples, false);
   if (!rxbuf0) {
     perror("Could not create RX buffer");
@@ -261,8 +304,10 @@ int main(int argc, char **argv) {
    * 10 count */
   // for faster IO see
   // https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842018/Linux+User+Mode+Pseudo+Driver
-  rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_EN_OFF, 1, false,
-                               GPIO_CONSUMER, NULL, NULL);
+  /*rv = gpiod_ctxless_get_value(GPIO_CHIP_NAME, TRIG_EN_OFF, false,*/
+  /*GPIO_CONSUMER);*/
+  /*rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_EN_OFF, 1, false,*/
+  /*GPIO_CONSUMER, NULL, NULL);*/
   /*
    *for (int i = 0; i < 1; i++) { // max 16 ?
    *  iio_buffer_refill(rxbuf0);
@@ -288,25 +333,26 @@ int main(int argc, char **argv) {
   /*}*/
   for (int i = 0; i < N_BLOCKS; i++) {
     iio_buffer_refill(rxbuf0);
-    iio_buffer_refill(rxbuf1);
+    /*iio_buffer_refill(rxbuf1);*/
     p_inc = iio_buffer_step(rxbuf0);
     p_end = iio_buffer_end(rxbuf0);
     p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
     /*p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);*/
-    p_dat_b = (char *)iio_buffer_first(rxbuf1, rx1_a);
-    pval16 = (int16_t *)(p_end - p_inc);
+    /*p_dat_b = (char *)iio_buffer_first(rxbuf1, rx1_a);*/
+    /*pval16 = (int16_t *)(p_end - p_inc);*/
     memcpy(pAdcData + bufSize * i, p_dat_a, bufSize);
-    memcpy(pAdcData1 + bufSize * i, p_dat_b, bufSize);
-    /*for (int j = 0; j < 2; j++) {*/
-    /*memcpy(pAdcData + (j + 2) * savBlock, p_dat_a + j * savBlock, savBlock);*/
-    /*}*/
+    /*memcpy(pAdcData1 + bufSize * i, p_dat_b, bufSize);*/
   }
   /*usleep(10);*/
   n_samples = (p_end - p_dat_a) / p_inc;
-  printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end, n_samples,
+  printf("Inc, %d, End %p, NS:%d,  BS, %d\n", p_inc, p_end, n_samples,
          bufSamples);
-  printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end,
-         n_samples, *pval16);
+  // printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end,
+  //       n_samples, *pval16);
+  //       Inc, 4, End 0x3345a000, NS:1048576,  BS, 1048576
+  // p_dat, 0x3305a000, (nil), End 0x3345a000, N:1048576, LS, -16
+  // Inc, 4, End 0x3345a000, N:-1048576,  SS, 4
+
   printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,
          (p_dat_a - p_end) / p_inc, iio_device_get_sample_size(dev0));
 
@@ -319,16 +365,30 @@ int main(int argc, char **argv) {
   printf("* get_multiple_gpio delay_val: %d, %.3f us\n", delay_val,
          delay_val / 5.0 * 8e-3);
   // turns OFF LED, reset trigger machine
+  ulval = *((unsigned long *)(mapped_dev_base + GPIO_0_DATA_OFFSET));
+  printf("val 0x%lX, ", ulval);
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_EN_OFF, 0, false,
                                GPIO_CONSUMER, NULL, NULL);
+  ulval = *((unsigned long *)(mapped_dev_base + GPIO_0_DATA_OFFSET));
+  printf("gpio 0 val 0x%lX,", ulval);
+  ulval = *((unsigned long *)(mapped_dev_base + GPIO_1_DATA_OFFSET));
+  printf("gpio 1 val 0x%lX \n", ulval);
   printf("* Saving Data to Files\n");
   fwrite(pAdcData, N_BLOCKS, bufSize, fd_data);
   /*fwrite(pAdcData1, N_BLOCKS, bufSize, fd_data1);*/
   if (pAdcData)
     free(pAdcData);
-  free(pAdcData1);
+  if (pAdcData1)
+    free(pAdcData1);
   fclose(fd_data);
-  fclose(fd_data1);
+  if (fd_data1)
+    fclose(fd_data1);
+  if (munmap(mapped_base, MAP_SIZE) == -1) {
+    printf("Can't unmap memory from user space.\n");
+    exit(0);
+  }
+
+  close(memfd);
   printf("Program Ended\n");
   return 0;
 }
