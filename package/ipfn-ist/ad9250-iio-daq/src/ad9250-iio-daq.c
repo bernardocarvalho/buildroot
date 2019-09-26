@@ -40,7 +40,7 @@
 //#define GPIO_LINE_OFFSET 18
 #define N_CHAN 2
 #define N_BLOCKS                                                               \
-  8 //  Number of RX buffers to save, 32ms, Max 16.5 good acquisition
+  2 //  Number of RX buffers to save, 32ms, Max 16.5 good acquisition
 #define GPIO_CHIP_NAME "/dev/gpiochip0"
 #define GPIO_CONSUMER "gpiod-consumer"
 #define GPIO_MAX_LINES 64
@@ -63,6 +63,8 @@ line  11:      unnamed       unused  output  active-high Address Line
 line  12:      unnamed       unused  output  active-high Address Line
 line  13:      unnamed       unused  output  active-high
 line  32:      unnamed "sysref-enable" output active-high [used]
+
+line  36:      unnamed  Trigger enable bit
 Lines 40-55 Trigger Value
 */
 #define ASSERT(expr)                                                           \
@@ -87,6 +89,9 @@ static struct iio_channel *rx1_b = NULL;
 static struct iio_buffer *rxbuf0 = NULL;
 static struct iio_buffer *rxbuf1 = NULL;
 /*static struct iio_buffer  *txbuf = NULL;*/
+
+int memfd;
+void *mapped_base, *mapped_dev_base;
 
 static bool stop;
 /* cleanup and exit */
@@ -202,36 +207,13 @@ int write_trigger_reg(unsigned int reg, int value) {
                                NULL, NULL);
   return rv;
 }
-/* simple configuration and streaming */
-int main(int argc, char **argv) {
-  // Streaming devices
-  //        struct iio_device *rx;
 
-  // size_t nrx = 0;
-  //	size_t ntx = 0;
-  //	ssize_t nbytes_rx;//, nbytes_tx;
-  char *p_dat_a, *p_end; //, *p_dat_b;
-  char *pAdcData = NULL;
-  char *pAdcData1 = NULL;
-  ptrdiff_t p_inc;
-  /*int16_t *pval16;*/
-  unsigned int n_samples, bufSamples, savBytes;
-  unsigned int bufSize, savBlock; // =128*4096;
-
-  /*char fd_name[64];*/
-  FILE *fd_data;
-  FILE *fd_data1 = NULL;
-  int rv;
-  int trigger_value = 4000; // 0x0025;
-  int delay_val = 0;
-  int memfd;
-  void *mapped_base, *mapped_dev_base;
+int mmap_gpio_mem() {
   off_t dev_base = GPIO_BASE_ADDRESS;
-  unsigned long ulval;
   memfd = open("/dev/mem", O_RDWR | O_SYNC);
   if (memfd == -1) {
     printf("Can't open /dev/mem.\n");
-    exit(0);
+    return -1;
   }
   printf("/dev/mem opened.\n");
   // Map one page of memory into user space such that the device is in that
@@ -241,16 +223,41 @@ int main(int argc, char **argv) {
                      dev_base & ~MAP_MASK);
   if (mapped_base == (void *)-1) {
     printf("Can't map the memory to user space.\n");
-    exit(0);
+    return -1;
   }
-  printf("Memory mapped at address %p.\n", mapped_base);
+  printf("GPIO Memory mapped at address %p.\n", mapped_base);
   // get the address of the device in user space which will be an offset from
   // the base that was mapped as memory is mapped at the start of a page
 
   mapped_dev_base = mapped_base + (dev_base & MAP_MASK);
+  return 0;
+}
+void mmap_gpio_write32(unsigned int uval, unsigned int reg_offset) {
+  *((unsigned int *)(mapped_dev_base + reg_offset)) = uval;
+}
 
-  // write to the direction register so all the GPIOs are on output to drive
-  // LEDs
+/* Main Board configuration and streaming */
+int main(int argc, char **argv) {
+
+  char *p_dat_a, *p_end; //, *p_dat_b;
+  char *pAdcData = NULL;
+  char *pAdcData1 = NULL;
+  ptrdiff_t p_inc;
+  /*int16_t *pval16;*/
+  unsigned int n_samples, bufSamples, savBytes;
+  unsigned int bufSize; // =128*4096;
+
+  FILE *fd_data;
+  FILE *fd_data1 = NULL;
+  int rv;
+  int trigger_value = 4000; // 0x0025;
+  int delay_val = 0;
+  unsigned long ulval;
+
+  // Listen to ctrl+c and ASSERT
+  signal(SIGINT, handle_sig);
+
+  mmap_gpio_mem();
 
   // Clear Write reg enable
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_REG_WRT_OFF, 0, false,
@@ -263,13 +270,9 @@ int main(int argc, char **argv) {
   fd_data = fopen("intData.bin", "wb");
   /*fd_data1 = fopen("intData34.bin", "wb");*/
 
-  // Listen to ctrl+c and ASSERT
-  signal(SIGINT, handle_sig);
-
   /* ~4 ms buffers*/
-  bufSamples = 1024 * 1024;       // number of samples per buff RX IIO
-  savBlock = N_CHAN * bufSamples; //
-  bufSize = savBlock * sizeof(int16_t);
+  bufSamples = 1024 * 1024; // number of samples per buff RX IIO
+  bufSize = N_CHAN * bufSamples * sizeof(int16_t);
   savBytes = N_BLOCKS * bufSize; // sizeof(int16_t) * savBlock ;
   pAdcData = (char *)malloc(savBytes);
   if (!pAdcData) {
@@ -285,7 +288,9 @@ int main(int argc, char **argv) {
   }
   config_iio_acq();
   ulval = 0x11;
-  *((unsigned long *)(mapped_dev_base + GPIO_1_DATA_OFFSET)) = ulval;
+  mmap_gpio_write32(0x11, GPIO_1_DATA_OFFSET);
+
+  /**((unsigned long *)(mapped_dev_base + GPIO_1_DATA_OFFSET)) = ulval;*/
   /* Starts acquition channels 0,1*/
   /*
    rxbuf1 = iio_device_create_buffer(dev1, bufSamples, false);
@@ -299,6 +304,8 @@ int main(int argc, char **argv) {
     perror("Could not create RX buffer");
     shutdown_iio();
   }
+  /*~ 26 ms interval*/
+  mmap_gpio_write32(0x01, GPIO_1_DATA_OFFSET);
   /* arm Trigger (also first blink LED. delay ~8 ms */
   /* Wavetek 395 Model: Pulse mode, 1ms period, 800 ns /800 ns Leading/Trail,
    * 10 count */
@@ -332,7 +339,9 @@ int main(int argc, char **argv) {
   /*memcpy(pAdcData + i * savBlock, p_dat_a + i * savBlock, savBlock);*/
   /*}*/
   for (int i = 0; i < N_BLOCKS; i++) {
-    iio_buffer_refill(rxbuf0);
+    rv = iio_buffer_refill(rxbuf0);
+    if (rv != bufSize)
+      printf("Refill size: %d\n", rv);
     /*iio_buffer_refill(rxbuf1);*/
     p_inc = iio_buffer_step(rxbuf0);
     p_end = iio_buffer_end(rxbuf0);
@@ -345,8 +354,8 @@ int main(int argc, char **argv) {
   }
   /*usleep(10);*/
   n_samples = (p_end - p_dat_a) / p_inc;
-  printf("Inc, %d, End %p, NS:%d,  BS, %d\n", p_inc, p_end, n_samples,
-         bufSamples);
+  printf("Inc, %d, End %p, NS:%d,  BS, %d, rv:%d\n", p_inc, p_end, n_samples,
+         bufSamples, rv);
   // printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end,
   //       n_samples, *pval16);
   //       Inc, 4, End 0x3345a000, NS:1048576,  BS, 1048576
@@ -365,10 +374,9 @@ int main(int argc, char **argv) {
   printf("* get_multiple_gpio delay_val: %d, %.3f us\n", delay_val,
          delay_val / 5.0 * 8e-3);
   // turns OFF LED, reset trigger machine
-  ulval = *((unsigned long *)(mapped_dev_base + GPIO_0_DATA_OFFSET));
-  printf("val 0x%lX, ", ulval);
   rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_EN_OFF, 0, false,
                                GPIO_CONSUMER, NULL, NULL);
+  /*Fast reading of GPIO register*/
   ulval = *((unsigned long *)(mapped_dev_base + GPIO_0_DATA_OFFSET));
   printf("gpio 0 val 0x%lX,", ulval);
   ulval = *((unsigned long *)(mapped_dev_base + GPIO_1_DATA_OFFSET));
