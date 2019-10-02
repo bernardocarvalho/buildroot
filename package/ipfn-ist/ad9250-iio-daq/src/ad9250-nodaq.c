@@ -57,16 +57,16 @@
 #define MAP_SIZE 4096UL
 #define MAP_MASK (MAP_SIZE - 1)
 /*
-line   9:      unnamed       unused  output  active-high Trigger active High
-line  10:      unnamed       unused   input  active-high
-line  11:      unnamed       unused  output  active-high Address Line
-line  12:      unnamed       unused  output  active-high Address Line
-line  13:      unnamed       unused  output  active-high
-line  32:      unnamed "sysref-enable" output active-high [used]
+   line   9:      unnamed       unused  output  active-high Trigger active High
+   line  10:      unnamed       unused   input  active-high
+   line  11:      unnamed       unused  output  active-high Address Line
+   line  12:      unnamed       unused  output  active-high Address Line
+   line  13:      unnamed       unused  output  active-high
+   line  32:      unnamed "sysref-enable" output active-high [used]
 
-line  36:      unnamed  Trigger enable bit
-Lines 40-55 Trigger Value
-*/
+   line  36:      unnamed  Trigger enable bit
+   Lines 40-55 Trigger Value
+   */
 #define ASSERT(expr)                                                           \
   {                                                                            \
     if (!(expr)) {                                                             \
@@ -75,83 +75,11 @@ Lines 40-55 Trigger Value
     }                                                                          \
   }
 
-/* RX is input, TX is output */
-enum iodev { RX, TX };
-
-/* IIO structs required for streaming */
-static struct iio_context *ctx = NULL;
-static struct iio_device *dev0 = NULL;
-static struct iio_device *dev1 = NULL;
-static struct iio_channel *rx0_a = NULL;
-static struct iio_channel *rx0_b = NULL;
-static struct iio_channel *rx1_a = NULL;
-static struct iio_channel *rx1_b = NULL;
-static struct iio_buffer *rxbuf0 = NULL;
-static struct iio_buffer *rxbuf1 = NULL;
-/*static struct iio_buffer  *txbuf = NULL;*/
-
 int memfd;
 void *mapped_base, *mapped_dev_base;
 
 static bool stop;
 /* cleanup and exit */
-static void shutdown_iio() {
-  printf("* Destroying IIO buffers\n");
-  if (rxbuf0) {
-    iio_buffer_destroy(rxbuf0);
-  }
-  if (rxbuf1) {
-    iio_buffer_destroy(rxbuf1);
-  }
-  /*if (txbuf) { iio_buffer_destroy(txbuf); }*/
-  printf("* Disabling streaming channels\n");
-  if (rx0_a) {
-    iio_channel_disable(rx0_a);
-  }
-  if (rx0_b) {
-    iio_channel_disable(rx0_b);
-  }
-  if (rx1_a) {
-    iio_channel_disable(rx1_a);
-  }
-  if (rx1_b) {
-    iio_channel_disable(rx1_b);
-  }
-
-  printf("* Destroying context\n");
-  if (ctx) {
-    iio_context_destroy(ctx);
-  }
-  // exit(0);
-}
-
-static void config_iio_acq() {
-  int ctx_cnt;
-  printf("* Acquiring IIO context\n");
-
-  ASSERT((ctx = iio_create_local_context()) && "No context");
-  ASSERT(ctx_cnt = iio_context_get_devices_count(ctx) > 0 && "No devices");
-  dev0 = iio_context_find_device(ctx, "axi-ad9250-hpc-0");
-  ASSERT(dev0 && "No axi-ad9250-hpc-0 device found");
-  /* finds AD9250 streaming IIO channels */
-  rx0_a = iio_device_find_channel(dev0, "voltage0", 0); // RX
-  ASSERT(rx0_a && "No axi-ad9250-hpc-0 channel 0 found");
-  rx0_b = iio_device_find_channel(dev0, "voltage1", 0);
-  ASSERT(rx0_b && "No axi-ad9250-hpc-0 channel 1 found");
-
-  iio_channel_enable(rx0_a);
-  iio_channel_enable(rx0_b);
-
-  /*printf("ctx_cnt=%d\n", ctx_cnt);*/
-  dev1 = iio_context_find_device(ctx, "axi-ad9250-hpc-1");
-  ASSERT(dev1 && "No axi-ad9250-hpc-1 device found");
-  rx1_a = iio_device_find_channel(dev1, "voltage0", 0); // RX
-  ASSERT(rx1_a && "No axi-ad9250-hpc-1 channel 0 found");
-  // iio_channel_enable(rx1_a);
-  rx1_b = iio_device_find_channel(dev1, "voltage1", 0); // RX
-  ASSERT(rx1_b && "No axi-ad9250-hpc-1 channel 1 found");
-  // iio_channel_enable(rx1_b);
-}
 
 static void handle_sig(int sig) {
   printf("Waiting for process to finish...\n");
@@ -239,16 +167,8 @@ void mmap_gpio_write32(unsigned int uval, unsigned int reg_offset) {
 /* Main Board configuration and streaming */
 int main(int argc, char **argv) {
 
-  char *p_dat_a, *p_end; //, *p_dat_b;
-  char *pAdcData = NULL;
-  char *pAdcData1 = NULL;
-  ptrdiff_t p_inc;
   /*int16_t *pval16;*/
-  unsigned int n_samples, bufSamples, savBytes;
-  unsigned int bufSize; // =128*4096;
 
-  FILE *fd_data;
-  FILE *fd_data1 = NULL;
   int rv;
   int trigger_value = 4000; // 0x0025;
   int delay_val = 0;
@@ -267,105 +187,12 @@ int main(int argc, char **argv) {
   trigger_value = -6000; // 0x0025;
   rv = write_trigger_reg(2, trigger_value);
   /*sprintf(fd_name,"intData.bin");*/
-  fd_data = fopen("intData.bin", "wb");
   /*fd_data1 = fopen("intData34.bin", "wb");*/
 
-  /* ~4 ms buffers*/
-  bufSamples = 1024 * 1024; // number of samples per buff RX IIO
-  bufSize = N_CHAN * bufSamples * sizeof(int16_t);
-  savBytes = N_BLOCKS * bufSize; // sizeof(int16_t) * savBlock ;
-  pAdcData = (char *)malloc(savBytes);
-  if (!pAdcData) {
-    perror("Could not create pAdcData buffer");
-    shutdown_iio();
-  }
-  if (fd_data1) {
-    pAdcData1 = (char *)malloc(savBytes);
-    if (!pAdcData1) {
-      perror("Could not create pAdcData1 buffer");
-      shutdown_iio();
-    }
-  }
-  config_iio_acq();
   ulval = 0x11;
   mmap_gpio_write32(0x11, GPIO_1_DATA_OFFSET);
+  usleep(100000);
 
-  /**((unsigned long *)(mapped_dev_base + GPIO_1_DATA_OFFSET)) = ulval;*/
-  /* Starts acquition channels 0,1*/
-  /*
-   rxbuf1 = iio_device_create_buffer(dev1, bufSamples, false);
-  if (!rxbuf1) {
-    perror("Could not create RX buffer 1");
-    shutdown_iio();
-  }
-  */
-  rxbuf0 = iio_device_create_buffer(dev0, bufSamples, false);
-  if (!rxbuf0) {
-    perror("Could not create RX buffer");
-    shutdown_iio();
-  }
-  /*~ 26 ms interval*/
-  /*mmap_gpio_write32(0x01, GPIO_1_DATA_OFFSET);*/
-  /* arm Trigger (also first blink LED. delay ~8 ms */
-  /* Wavetek 395 Model: Pulse mode, 1ms period, 800 ns /800 ns Leading/Trail,
-   * 10 count */
-  // for faster IO see
-  // https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842018/Linux+User+Mode+Pseudo+Driver
-  /*rv = gpiod_ctxless_get_value(GPIO_CHIP_NAME, TRIG_EN_OFF, false,*/
-  /*GPIO_CONSUMER);*/
-  /*rv = gpiod_ctxless_set_value(GPIO_CHIP_NAME, TRIG_EN_OFF, 1, false,*/
-  /*GPIO_CONSUMER, NULL, NULL);*/
-  /*
-   *for (int i = 0; i < 1; i++) { // max 16 ?
-   *  iio_buffer_refill(rxbuf0);
-   *  p_inc = iio_buffer_step(rxbuf0);
-   *  p_end = iio_buffer_end(rxbuf0);
-   *  p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
-   *  p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);
-   *  pval16 = (int16_t *)(p_end - p_inc);
-   *  if (*pval16 > 40) {
-   *    printf("got trigger!\n");
-   *    printf("p_dat, %p, %p, End %p,  %d\n", p_dat_a, p_dat_b, p_end,
-   **pval16);
-   *    break;
-   *  }
-   *  //    usleep(10);
-   *}
-   *  while(*pval16 < trigLevel);
-   * memcpy(pAdcData, p_dat_a, (p_end - p_dat_a));
-   *memcpy(pAdcData, p_dat_a, bufSize);
-   */
-  /*for (int i = 0; i < 2; i++) {*/
-  /*memcpy(pAdcData + i * savBlock, p_dat_a + i * savBlock, savBlock);*/
-  /*}*/
-  for (int i = 0; i < N_BLOCKS; i++) {
-    rv = iio_buffer_refill(rxbuf0);
-    if (rv != bufSize)
-      printf("Refill size: %d\n", rv);
-    /*iio_buffer_refill(rxbuf1);*/
-    p_inc = iio_buffer_step(rxbuf0);
-    p_end = iio_buffer_end(rxbuf0);
-    p_dat_a = (char *)iio_buffer_first(rxbuf0, rx0_a);
-    /*p_dat_b = (char *)iio_buffer_first(rxbuf0, rx0_b);*/
-    /*p_dat_b = (char *)iio_buffer_first(rxbuf1, rx1_a);*/
-    /*pval16 = (int16_t *)(p_end - p_inc);*/
-    memcpy(pAdcData + bufSize * i, p_dat_a, bufSize);
-    /*memcpy(pAdcData1 + bufSize * i, p_dat_b, bufSize);*/
-  }
-  /*usleep(10);*/
-  n_samples = (p_end - p_dat_a) / p_inc;
-  printf("Inc, %d, End %p, NS:%d,  BS, %d, rv:%d\n", p_inc, p_end, n_samples,
-         bufSamples, rv);
-  // printf("p_dat, %p, %p, End %p, N:%d, LS, %d\n", p_dat_a, p_dat_b, p_end,
-  //       n_samples, *pval16);
-  //       Inc, 4, End 0x3345a000, NS:1048576,  BS, 1048576
-  // p_dat, 0x3305a000, (nil), End 0x3345a000, N:1048576, LS, -16
-  // Inc, 4, End 0x3345a000, N:-1048576,  SS, 4
-
-  printf("Inc, %d, End %p, N:%d,  SS, %d\n", p_inc, p_end,
-         (p_dat_a - p_end) / p_inc, iio_device_get_sample_size(dev0));
-
-  shutdown_iio();
   rv = get_multiple_gpio(TRIG_REG_VAL_OFF, 16, &delay_val); // Lines 40-55
   if (rv) {
     printf("Error get_multiple_gpio: %d\n", rv);
@@ -381,16 +208,6 @@ int main(int argc, char **argv) {
   printf("gpio 0 val 0x%lX,", ulval);
   ulval = *((unsigned long *)(mapped_dev_base + GPIO_1_DATA_OFFSET));
   printf("gpio 1 val 0x%lX \n", ulval);
-  printf("* Saving Data to Files\n");
-  fwrite(pAdcData, N_BLOCKS, bufSize, fd_data);
-  /*fwrite(pAdcData1, N_BLOCKS, bufSize, fd_data1);*/
-  if (pAdcData)
-    free(pAdcData);
-  if (pAdcData1)
-    free(pAdcData1);
-  fclose(fd_data);
-  if (fd_data1)
-    fclose(fd_data1);
   if (munmap(mapped_base, MAP_SIZE) == -1) {
     printf("Can't unmap memory from user space.\n");
     exit(0);

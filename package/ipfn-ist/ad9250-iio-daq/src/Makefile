@@ -26,5 +26,8 @@ $(TARGET): $(TARGET).o
 usergpio: usergpio.o
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 
+ad925-nodaq: ad925-nodaq.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+
 clean:
 	rm -f $(TARGET) $(TARGET:%=%.o)
